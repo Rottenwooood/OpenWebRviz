@@ -1,18 +1,17 @@
-import { useState, useEffect } from 'react';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { MapCanvas } from './components/MapCanvas';
 import { LayerControl } from './components/LayerControl';
 import { useRosConnection } from './hooks/useRosConnection';
 
 function App() {
-  const { isConnected, error, ros } = useRosConnection('ws://localhost:9090');
+  const { ros, isConnected } = useRosConnection('ws://localhost:9090');
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {/* Header */}
       <header className="bg-white border-b px-4 py-3 flex items-center justify-between shadow-sm">
         <h1 className="text-xl font-bold text-gray-800">WebBot-Viz</h1>
-        <ConnectionStatus isConnected={isConnected} error={error} />
+        <ConnectionStatus wsUrl="ws://localhost:9090" />
       </header>
 
       {/* Main Content */}
