@@ -1,0 +1,21 @@
+{
+  "name": "webbot-viz",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
+    "dev:server": "bun run --filter server dev",
+    "dev:client": "bun run --filter client dev",
+    "build": "bun run build:server && bun run build:client",
+    "build:server": "bun run --filter server build",
+    "build:client": "bun run --filter client build",
+    "db:generate": "bun run --filter server db:generate",
+    "db:push": "bun run --filter server db:push"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
