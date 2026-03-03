@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as ROSLIB from 'roslib';
 import { useRosMap, useRosTf, MapData, RobotPose } from '../hooks/useRosMap';
+import { useRosLaserScan, LaserPoint } from '../hooks/useRosLaserScan';
+import { useLayers } from './LayerControl';
 
 interface MapCanvasProps {
   ros: ROSLIB.Ros | null;
@@ -26,6 +28,8 @@ export function MapCanvas({
 
   const { mapData, robotPose, isMapLoaded, setRobotPose } = useRosMap(ros, mapTopic);
   const tfPose = useRosTf(ros, 'map', 'base_link');
+  const { laserPoints, isScanReceived } = useRosLaserScan(ros, '/scan');
+  const { layers } = useLayers();
 
   // Combine TF pose with map-derived pose
   const actualPose = tfPose || robotPose;
@@ -132,7 +136,7 @@ export function MapCanvas({
     }
 
     // Draw robot pose if available
-    if (actualPose) {
+    if (actualPose && layers.tf) {
       const robotScreenX = centerX + actualPose.x * cellSize;
       const robotScreenY = centerY - actualPose.y * cellSize; // Flip Y
 
@@ -161,6 +165,29 @@ export function MapCanvas({
       ctx.fillText('base_link', robotScreenX + 12, robotScreenY - 12);
     }
 
+    // Draw laser scan points
+    if (layers.laser && laserPoints.length > 0 && actualPose) {
+      const robotScreenX = centerX + actualPose.x * cellSize;
+      const robotScreenY = centerY - actualPose.y * cellSize;
+
+      ctx.fillStyle = '#ef4444';
+      const pointSize = Math.max(1, cellSize / 20);
+
+      for (const point of laserPoints) {
+        // Transform point from laser frame to map frame using robot pose
+        // Laser is at robot position, so we just add robot position
+        const mapX = actualPose.x + point.x;
+        const mapY = actualPose.y + point.y;
+
+        const screenX = centerX + mapX * cellSize;
+        const screenY = centerY - mapY * cellSize;
+
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, pointSize, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     // Draw map origin marker
     const originX = centerX + info.origin.position.x * cellSize;
     const originY = centerY - info.origin.position.y * cellSize;
@@ -173,7 +200,7 @@ export function MapCanvas({
     ctx.font = '12px sans-serif';
     ctx.fillText('origin', originX + 8, originY - 8);
 
-  }, [mapData, actualPose, canvasSize, view, isConnected]);
+  }, [mapData, actualPose, canvasSize, view, isConnected, laserPoints, layers]);
 
   // Animation loop for continuous rendering
   useEffect(() => {
@@ -264,6 +291,12 @@ export function MapCanvas({
           <div className="w-4 h-4 rounded-full bg-green-500"></div>
           <span>Robot</span>
         </div>
+        {isScanReceived && (
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-red-500"></div>
+            <span>Laser ({laserPoints.length} pts)</span>
+          </div>
+        )}
       </div>
     </div>
   );
