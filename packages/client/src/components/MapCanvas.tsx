@@ -217,21 +217,21 @@ export function MapCanvas({
 
   }, [mapData, actualPose, canvasSize, view, isConnected, laserPoints, layers]);
 
-  // Animation loop for continuous rendering
+  // Optimized: Only render when data changes, not on every frame
+  // Use a ref to store latest draw function and trigger render on data changes
+  const drawRef = useRef(draw);
+  drawRef.current = draw;
+  const [renderKey, setRenderKey] = useState(0);
+
+  // Trigger render when any data changes
   useEffect(() => {
-    let animationId: number;
+    setRenderKey(k => k + 1);
+  }, [mapData, actualPose, laserPoints, canvasSize, view, layers, isConnected]);
 
-    const render = () => {
-      draw();
-      animationId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      cancelAnimationFrame(animationId);
-    };
-  }, [draw]);
+  // Single render triggered by data changes
+  useEffect(() => {
+    drawRef.current();
+  }, [renderKey]);
 
   // Pan handling
   const handleWheel = useCallback((e: React.WheelEvent) => {
