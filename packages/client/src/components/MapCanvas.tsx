@@ -94,12 +94,11 @@ export function MapCanvas({
         const idx = y * mapWidth + x;
         const value = data[idx];
 
-        // Skip unknown cells to improve performance
-        if (value === -1) continue;
-
         // Determine color
         let color: string;
-        if (value === 100) {
+        if (value === -1) {
+          color = '#b0b0b0'; // unknown = gray
+        } else if (value === 100) {
           color = '#1e1e1e'; // occupied = dark
         } else {
           color = '#f0f0f0'; // free = white

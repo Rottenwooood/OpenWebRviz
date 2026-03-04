@@ -30,7 +30,7 @@ function App() {
         <div className="flex-1 flex overflow-hidden">
           {/* Sidebar */}
           <aside className="w-64 bg-white border-r p-4 overflow-y-auto">
-            <LayerControl ros={ros} />
+            <LayerControl />
           </aside>
 
           {/* Map Canvas */}

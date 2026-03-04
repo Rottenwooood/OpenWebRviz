@@ -54,7 +54,7 @@ export function useRosMap(ros: ROSLIB.Ros | null, mapTopic: string = '/map') {
       console.log('[useRosMap] Received map:', gridMsg.info.width, 'x', gridMsg.info.height);
     });
 
-    mapSub.on('error', (err: Error) => {
+    (mapSub as any).on('error', (err: Error) => {
       console.error('[useRosMap] Map subscription error:', err);
       setError(err.message);
     });

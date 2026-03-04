@@ -1,9 +1,4 @@
 import { useState, createContext, useContext, useCallback } from 'react';
-import * as ROSLIB from 'roslib';
-
-interface LayerControlProps {
-  ros?: ROSLIB.Ros | null;
-}
 
 interface LayerState {
   map: boolean;
@@ -53,7 +48,7 @@ export function LayerControlProvider({ children }: { children: React.ReactNode }
   );
 }
 
-export function LayerControl({ ros }: LayerControlProps) {
+export function LayerControl() {
   const { layers, toggleLayer } = useLayers();
 
   const layersConfig = [

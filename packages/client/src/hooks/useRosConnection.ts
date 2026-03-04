@@ -9,10 +9,11 @@ export function useRosConnection(wsUrl: string) {
   const [error, setError] = useState<string | null>(null);
   const rosRef = useRef<ROSLIB.Ros | null>(null);
   const reconnectCountRef = useRef(0);
+  const connectionStateRef = useRef<ConnectionState>('disconnected');
 
   const connect = useCallback(() => {
     // Don't connect if already connecting or connected
-    if (connectionState === 'connecting' || connectionState === 'connected') {
+    if (connectionStateRef.current === 'connecting' || connectionStateRef.current === 'connected') {
       return;
     }
 
@@ -33,7 +34,7 @@ export function useRosConnection(wsUrl: string) {
 
       // Set up timeout (10 seconds)
       const timeoutId = setTimeout(() => {
-        if (connectionState === 'connecting') {
+        if (connectionStateRef.current === 'connecting') {
           rosInstance.close();
           setConnectionState('error');
           setError('Connection timeout. Is rosbridge_websocket running at ' + wsUrl + '?');
@@ -47,7 +48,7 @@ export function useRosConnection(wsUrl: string) {
         setError(null);
       });
 
-      rosInstance.on('error', (err: unknown) => {
+      (rosInstance as any).on('error', (err: unknown) => {
         clearTimeout(timeoutId);
         console.error('ROS connection error:', err);
         setConnectionState('error');
@@ -69,7 +70,12 @@ export function useRosConnection(wsUrl: string) {
       setConnectionState('error');
       setError(err instanceof Error ? err.message : 'Failed to connect');
     }
-  }, [wsUrl, connectionState]);
+  }, [wsUrl]);
+
+  // Sync ref with state
+  useEffect(() => {
+    connectionStateRef.current = connectionState;
+  }, [connectionState]);
 
   const disconnect = useCallback(() => {
     setConnectionState('disconnected');

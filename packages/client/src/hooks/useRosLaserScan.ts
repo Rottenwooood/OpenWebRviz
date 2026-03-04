@@ -79,7 +79,7 @@ export function useRosLaserScan(
       console.log('[useRosLaserScan] Received scan with', points.length, 'points');
     });
 
-    scanSub.on('error', (err: Error) => {
+    (scanSub as any).on('error', (err: Error) => {
       console.error('[useRosLaserScan] Scan subscription error:', err);
       setError(err.message);
     });
