@@ -35,9 +35,9 @@ export function MapCanvas({
   const actualPose = tfPose || robotPose;
 
   // Display data with rate limiting and pause control
-  const [displayMapData, setDisplayMapData] = useState(mapData);
-  const [displayPose, setDisplayPose] = useState(actualPose);
-  const [displayLaserPoints, setDisplayLaserPoints] = useState(laserPoints);
+  const [displayMapData, setDisplayMapData] = useState<MapData | null>(null);
+  const [displayPose, setDisplayPose] = useState<{ x: number; y: number; theta: number } | null>(null);
+  const [displayLaserPoints, setDisplayLaserPoints] = useState<LaserPoint[]>([]);
 
   // Refs for rate limiting
   const lastMapUpdate = useRef(0);
@@ -50,25 +50,22 @@ export function MapCanvas({
     const now = performance.now();
     const minInterval = rate > 0 ? 1000 / rate : 0;
 
-    // Update map data
-    if (!paused && mapData) {
-      if (rate === 0 || now - lastMapUpdate.current >= minInterval) {
+    // Always update if not paused (rate limiting handles throttling)
+    if (!paused) {
+      // Update map data
+      if (mapData && (rate === 0 || now - lastMapUpdate.current >= minInterval)) {
         setDisplayMapData(mapData);
         lastMapUpdate.current = now;
       }
-    }
 
-    // Update pose data
-    if (!paused && actualPose) {
-      if (rate === 0 || now - lastPoseUpdate.current >= minInterval) {
+      // Update pose data
+      if (actualPose && (rate === 0 || now - lastPoseUpdate.current >= minInterval)) {
         setDisplayPose(actualPose);
         lastPoseUpdate.current = now;
       }
-    }
 
-    // Update laser data
-    if (!paused && laserPoints.length > 0) {
-      if (rate === 0 || now - lastLaserUpdate.current >= minInterval) {
+      // Update laser data
+      if (laserPoints.length > 0 && (rate === 0 || now - lastLaserUpdate.current >= minInterval)) {
         setDisplayLaserPoints(laserPoints);
         lastLaserUpdate.current = now;
       }
