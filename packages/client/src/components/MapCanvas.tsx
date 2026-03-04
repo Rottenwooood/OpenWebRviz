@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as ROSLIB from 'roslib';
-import { useRosMap, useRosTf, MapData, RobotPose } from '../hooks/useRosMap';
+import { useRosMap, MapData, RobotPose } from '../hooks/useRosMap';
+import { useRosTf, useRosTfTree } from '../hooks/useRosTf';
 import { useRosLaserScan, LaserPoint } from '../hooks/useRosLaserScan';
 import { useLayers } from './LayerControl';
 
@@ -31,7 +32,7 @@ export function MapCanvas({
   const isPaused = subscriptionSettings.paused;
 
   const { mapData, robotPose, isMapLoaded, setRobotPose } = useRosMap(ros, mapTopic, isPaused);
-  const tfPose = useRosTf(ros, 'map', 'base_link', isPaused);
+  const { tfTree, robotPose: tfPose } = useRosTfTree(ros, isPaused);
   const { laserPoints, isScanReceived } = useRosLaserScan(ros, '/scan', isPaused);
 
   // Combine TF pose with map-derived pose

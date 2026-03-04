@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import * as ROSLIB from 'roslib';
 
 export interface MapData {
@@ -48,7 +48,7 @@ export function useRosMap(ros: ROSLIB.Ros | null, mapTopic: string = '/map', pau
     });
 
     mapSub.subscribe((message: unknown) => {
-      if (paused) return; // Skip if paused
+      if (paused) return;
       const gridMsg = message as MapData;
       setMapData(gridMsg);
       setIsMapLoaded(true);
@@ -74,56 +74,4 @@ export function useRosMap(ros: ROSLIB.Ros | null, mapTopic: string = '/map', pau
     isMapLoaded,
     error,
   };
-}
-
-// Hook for TF listener
-export function useRosTf(
-  ros: ROSLIB.Ros | null,
-  targetFrame: string = 'map',
-  sourceFrame: string = 'base_link',
-  paused: boolean = false
-) {
-  const [robotPose, setRobotPose] = useState<RobotPose | null>(null);
-
-  useEffect(() => {
-    if (!ros) {
-      setRobotPose(null);
-      return;
-    }
-
-    const tfClient = new ROSLIB.TFClient({
-      ros,
-      fixedFrame: targetFrame,
-      angularThres: 0.01,
-      transThres: 0.01,
-    });
-
-    // Wait for transform to become available
-    tfClient.subscribe(sourceFrame, (transform) => {
-      if (paused) return; // Skip if paused
-      if (transform) {
-        const pose: RobotPose = {
-          x: transform.translation.x,
-          y: transform.translation.y,
-          theta: quatToTheta(transform.rotation),
-          frameId: sourceFrame,
-        };
-        setRobotPose(pose);
-      }
-    });
-
-    return () => {
-      tfClient.unsubscribe(sourceFrame);
-      setRobotPose(null);
-    };
-  }, [ros, targetFrame, sourceFrame, paused]);
-
-  return robotPose;
-}
-
-// Convert quaternion to theta (yaw)
-function quatToTheta(q: { x: number; y: number; z: number; w: number }): number {
-  const siny_cosp = 2 * (q.w * q.z + q.x * q.y);
-  const cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
-  return Math.atan2(siny_cosp, cosy_cosp);
 }
