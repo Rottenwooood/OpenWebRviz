@@ -3,7 +3,9 @@ import * as ROSLIB from 'roslib';
 import { useRosMap, MapData, RobotPose } from '../hooks/useRosMap';
 import { useRosTf, useRosTfTree } from '../hooks/useRosTf';
 import { useRosLaserScan, LaserPoint } from '../hooks/useRosLaserScan';
+import { useRosPath, useGoalPublisher } from '../hooks/useRosPath';
 import { useLayers } from './LayerControl';
+import { useMode } from '../hooks/useMode';
 
 interface MapCanvasProps {
   ros: ROSLIB.Ros | null;
@@ -30,10 +32,13 @@ export function MapCanvas({
   // Get subscription settings first
   const { layers, subscriptionSettings } = useLayers();
   const isPaused = subscriptionSettings.paused;
+  const { mode } = useMode();
 
   const { mapData, robotPose, isMapLoaded, setRobotPose } = useRosMap(ros, mapTopic, isPaused);
   const { tfTree, robotPose: tfPose } = useRosTfTree(ros, isPaused);
   const { laserPoints, isScanReceived } = useRosLaserScan(ros, '/scan', isPaused);
+  const { globalPath, localPath } = useRosPath(ros, '/plan', '/local_plan', isPaused);
+  const { publishGoal } = useGoalPublisher(ros, '/goal_pose');
 
   // Combine TF pose with map-derived pose
   const actualPose = tfPose || robotPose;
@@ -252,6 +257,42 @@ export function MapCanvas({
       }
     }
 
+    // Draw global path (purple)
+    if (layers.globalPlan && globalPath && globalPath.points.length > 0) {
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < globalPath.points.length; i++) {
+        const point = globalPath.points[i];
+        const screenX = centerX + point.x * cellSize;
+        const screenY = centerY - point.y * cellSize;
+        if (i === 0) {
+          ctx.moveTo(screenX, screenY);
+        } else {
+          ctx.lineTo(screenX, screenY);
+        }
+      }
+      ctx.stroke();
+    }
+
+    // Draw local path (yellow)
+    if (layers.localPlan && localPath && localPath.points.length > 0) {
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < localPath.points.length; i++) {
+        const point = localPath.points[i];
+        const screenX = centerX + point.x * cellSize;
+        const screenY = centerY - point.y * cellSize;
+        if (i === 0) {
+          ctx.moveTo(screenX, screenY);
+        } else {
+          ctx.lineTo(screenX, screenY);
+        }
+      }
+      ctx.stroke();
+    }
+
     // Draw map origin marker
     if (layers.map) {
       const originMarkerX = centerX + info.origin.position.x * cellSize;
@@ -266,7 +307,7 @@ export function MapCanvas({
       ctx.fillText('origin', originMarkerX + 8, originMarkerY - 8);
     }
 
-  }, [displayMapData, displayPose, displayLaserPoints, canvasSize, view, isConnected, layers, isScanReceived]);
+  }, [displayMapData, displayPose, displayLaserPoints, canvasSize, view, isConnected, layers, isScanReceived, globalPath, localPath]);
 
   // Optimized: Only render when data changes, not on every frame
   const drawRef = useRef(draw);
@@ -276,7 +317,7 @@ export function MapCanvas({
   // Trigger render when any data changes - use individual layer values
   useEffect(() => {
     setRenderKey(k => k + 1);
-  }, [displayMapData, displayPose, displayLaserPoints, canvasSize, view, isConnected, layers.map, layers.tf, layers.laser]);
+  }, [displayMapData, displayPose, displayLaserPoints, canvasSize, view, isConnected, layers.map, layers.tf, layers.laser, layers.globalPlan, layers.localPlan, globalPath, localPath]);
 
   // Single render triggered by data changes
   useEffect(() => {
@@ -294,6 +335,34 @@ export function MapCanvas({
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // In navigation mode, click publishes goal
+    if (mode === 'navigation' && mapData && displayMapData) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      const { width, height } = canvasSize;
+      const { info } = displayMapData;
+      const resolution = info.resolution;
+      const cellSize = view.scale;
+      const originX = info.origin.position.x;
+      const originY = info.origin.position.y;
+      const centerX = width / 2 + view.offsetX;
+      const centerY = height / 2 + view.offsetY;
+
+      // Convert screen coordinates to world coordinates
+      const worldX = (clickX - centerX) / cellSize - originX;
+      const worldY = -(clickY - centerY) / cellSize - originY;
+
+      // Publish goal
+      publishGoal(worldX, worldY, 0);
+      return;
+    }
+
+    // Otherwise, handle panning
     const startX = e.clientX;
     const startY = e.clientY;
     const startView = { ...view };
@@ -313,7 +382,7 @@ export function MapCanvas({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [view]);
+  }, [view, mode, mapData, displayMapData, publishGoal]);
 
   return (
     <div
