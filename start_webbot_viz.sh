@@ -1,46 +1,49 @@
 #!/bin/bash
 
 # WebBot-Viz Startup Script
-# This script starts ROS 2 simulation, rosbridge_websocket, and SLAM for WebBot-Viz
+# This script starts ROS 2 simulation and SLAM for WebBot-Viz
+# Run in TMUX: tmux new -s webbot_viz -d "bash /path/to/start_webbot_viz.sh"
+# Stop: tmux kill-session -t webbot_viz
 
 # Source ROS 2
 source /opt/ros/jazzy/setup.bash
 
+# Save PIDs of all child processes
+CHILD_PIDS=""
+
+cleanup() {
+    echo "Stopping all processes..."
+    for pid in $CHILD_PIDS; do
+        kill -TERM "$pid" 2>/dev/null
+    done
+    # Also kill any remaining child processes
+    pkill -P $$ 2>/dev/null
+    exit 0
+}
+
+trap cleanup SIGHUP SIGTERM EXIT
+
 echo "=== Starting TurtleBot3 Gazebo Simulation ==="
-# Terminal 1: Start Gazebo simulation with TurtleBot3
 export TURTLEBOT3_MODEL=burger
+
+# Start gazebo and save its PID
 ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py &
+CHILD_PIDS="$CHILD_PIDS $!"
 
 # Wait for Gazebo to start
 sleep 15
 
-echo "=== Starting rosbridge_websocket ==="
-# Terminal 2: Start rosbridge WebSocket server
-ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
-
-sleep 3
+echo "=== Starting Robot State Publisher (for TF) ==="
+ros2 run robot_state_publisher robot_state_publisher &
+CHILD_PIDS="$CHILD_PIDS $!"
 
 echo "=== Starting SLAM Toolbox ==="
-# Terminal 3: Start SLAM for map generation
 ros2 launch slam_toolbox online_async_launch.py &
+CHILD_PIDS="$CHILD_PIDS $!"
 
-sleep 3
-
-echo "=== Available ROS Topics ==="
-ros2 topic list | grep -E "map|scan|tf|odom"
-
-echo ""
 echo "=== Setup Complete ==="
-echo "Open http://localhost:3000 in your browser"
-echo ""
-echo "=== To control the robot, use ONE of the following methods: ==="
-echo ""
-echo "Method 1 - Direct topic publish (works):"
-echo '  ros2 topic pub /cmd_vel geometry_msgs/msg/TwistStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: \"\"}, twist: {linear: {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}}" -r 10'
-echo ""
-echo "Method 2 - Use twist_stamped_publisher:"
-echo '  ros2 run twist_stamped_publisher twist_stamped_publisher'
-echo ""
-echo "Method 3 - Modify bridge config to accept Twist (not recommended)"
-echo ""
-echo "Note: The ros_gz_bridge expects TwistStamped, but teleop_twist_keyboard publishes Twist!"
+echo "SLAM running. Kill TMUX session to stop all processes."
+echo "Child PIDs: $CHILD_PIDS"
+
+# Wait for all background processes
+wait

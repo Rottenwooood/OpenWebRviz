@@ -23,8 +23,10 @@ export function useKeyboardTeleop(
     cmdVelPubRef.current = new ROSLIB.Topic({
       ros,
       name: settings.cmdVelTopic,
-      messageType: 'geometry_msgs/msg/Twist',
+      messageType: 'geometry_msgs/msg/TwistStamped',
     });
+
+    console.log('[useKeyboardTeleop] Publisher initialized for', settings.cmdVelTopic);
 
     return () => {
       if (cmdVelPubRef.current) {
@@ -60,11 +62,19 @@ export function useKeyboardTeleop(
 
     // Only publish if there's movement
     if (linear !== 0 || angular !== 0) {
-      const twist = {
-        linear: { x: linear, y: 0, z: 0 },
-        angular: { x: 0, y: 0, z: angular },
+      const now = Date.now();
+      const msg = {
+        header: {
+          stamp: { sec: Math.floor(now / 1000), nanosec: (now % 1000) * 1000000 },
+          frame_id: '',
+        },
+        twist: {
+          linear: { x: linear, y: 0, z: 0 },
+          angular: { x: 0, y: 0, z: angular },
+        },
       };
-      cmdVelPubRef.current.publish(twist);
+      console.log('[useKeyboardTeleop] Publishing:', linear, angular);
+      cmdVelPubRef.current.publish(msg);
     }
   }, [settings.linearSpeed, settings.angularSpeed, enabled]);
 
@@ -107,11 +117,18 @@ export function useKeyboardTeleop(
         stopPublishing();
         // Send stop command
         if (cmdVelPubRef.current) {
-          const twist = {
-            linear: { x: 0, y: 0, z: 0 },
-            angular: { x: 0, y: 0, z: 0 },
+          const now = Date.now();
+          const msg = {
+            header: {
+              stamp: { sec: Math.floor(now / 1000), nanosec: (now % 1000) * 1000000 },
+              frame_id: '',
+            },
+            twist: {
+              linear: { x: 0, y: 0, z: 0 },
+              angular: { x: 0, y: 0, z: 0 },
+            },
           };
-          cmdVelPubRef.current.publish(twist);
+          cmdVelPubRef.current.publish(msg);
         }
       }
     };
@@ -125,11 +142,18 @@ export function useKeyboardTeleop(
       stopPublishing();
       // Send stop command on cleanup
       if (cmdVelPubRef.current) {
-        const twist = {
-          linear: { x: 0, y: 0, z: 0 },
-          angular: { x: 0, y: 0, z: 0 },
+        const now = Date.now();
+        const msg = {
+          header: {
+            stamp: { sec: Math.floor(now / 1000), nanosec: (now % 1000) * 1000000 },
+            frame_id: '',
+          },
+          twist: {
+            linear: { x: 0, y: 0, z: 0 },
+            angular: { x: 0, y: 0, z: 0 },
+          },
         };
-        cmdVelPubRef.current.publish(twist);
+        cmdVelPubRef.current.publish(msg);
       }
     };
   }, [enabled, startPublishing, stopPublishing]);

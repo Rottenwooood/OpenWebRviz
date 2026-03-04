@@ -44,7 +44,6 @@ export function useRosMap(ros: ROSLIB.Ros | null, mapTopic: string = '/map', pau
       ros,
       name: mapTopic,
       messageType: 'nav_msgs/msg/OccupancyGrid',
-      compression: 'png',
     });
 
     mapSub.subscribe((message: unknown) => {
@@ -52,11 +51,9 @@ export function useRosMap(ros: ROSLIB.Ros | null, mapTopic: string = '/map', pau
       const gridMsg = message as MapData;
       setMapData(gridMsg);
       setIsMapLoaded(true);
-      console.log('[useRosMap] Received map:', gridMsg.info.width, 'x', gridMsg.info.height);
     });
 
     (mapSub as any).on('error', (err: Error) => {
-      console.error('[useRosMap] Map subscription error:', err);
       setError(err.message);
     });
 

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as ROSLIB from 'roslib';
 import { useRosMap, MapData, RobotPose } from '../hooks/useRosMap';
 import { useRosTf, useRosTfTree } from '../hooks/useRosTf';
-import { useRosLaserScan, LaserPoint } from '../hooks/useRosLaserScan';
 import { useRosPath, useGoalPublisher } from '../hooks/useRosPath';
 import { useLayers } from './LayerControl';
 import { useMode } from '../hooks/useMode';
@@ -34,52 +33,31 @@ export function MapCanvas({
   const isPaused = subscriptionSettings.paused;
   const { mode } = useMode();
 
-  const { mapData, robotPose, isMapLoaded, setRobotPose } = useRosMap(ros, mapTopic, isPaused);
-  const { tfTree, robotPose: tfPose } = useRosTfTree(ros, isPaused);
-  const { laserPoints, isScanReceived } = useRosLaserScan(ros, '/scan', isPaused);
-  const { globalPath, localPath } = useRosPath(ros, '/plan', '/local_plan', isPaused);
+  // Pause based on both global pause and layer settings
+  const mapPaused = isPaused || !layers.map;
+  const tfPaused = isPaused || !layers.tf;
+  const pathPaused = isPaused || (!layers.globalPlan && !layers.localPlan);
+
+  const { mapData, robotPose, isMapLoaded, setRobotPose } = useRosMap(ros, mapTopic, mapPaused);
+  const { robotPose: tfPose } = useRosTfTree(ros, tfPaused);
+  const { globalPath, localPath } = useRosPath(ros, '/plan', '/local_plan', pathPaused);
   const { publishGoal } = useGoalPublisher(ros, '/goal_pose');
 
   // Combine TF pose with map-derived pose
   const actualPose = tfPose || robotPose;
 
-  // Display data with rate limiting and pause control
+  // Display data - directly use source data
   const [displayMapData, setDisplayMapData] = useState<MapData | null>(null);
   const [displayPose, setDisplayPose] = useState<{ x: number; y: number; theta: number } | null>(null);
-  const [displayLaserPoints, setDisplayLaserPoints] = useState<LaserPoint[]>([]);
 
-  // Refs for rate limiting
-  const lastMapUpdate = useRef(0);
-  const lastPoseUpdate = useRef(0);
-  const lastLaserUpdate = useRef(0);
-
-  // Update display data based on settings
+  // Update display data when source data changes
   useEffect(() => {
-    const { rate, paused } = subscriptionSettings;
-    const now = performance.now();
-    const minInterval = rate > 0 ? 1000 / rate : 0;
-
-    // Always update if not paused (rate limiting handles throttling)
+    const { paused } = subscriptionSettings;
     if (!paused) {
-      // Update map data
-      if (mapData && (rate === 0 || now - lastMapUpdate.current >= minInterval)) {
-        setDisplayMapData(mapData);
-        lastMapUpdate.current = now;
-      }
-
-      // Update pose data
-      if (actualPose && (rate === 0 || now - lastPoseUpdate.current >= minInterval)) {
-        setDisplayPose(actualPose);
-        lastPoseUpdate.current = now;
-      }
-
-      // Update laser data
-      if (laserPoints.length > 0 && (rate === 0 || now - lastLaserUpdate.current >= minInterval)) {
-        setDisplayLaserPoints(laserPoints);
-        lastLaserUpdate.current = now;
-      }
+      if (mapData) setDisplayMapData(mapData);
+      if (actualPose) setDisplayPose(actualPose);
     }
-  }, [mapData, actualPose, laserPoints, subscriptionSettings]);
+  }, [mapData, actualPose, subscriptionSettings.paused]);
 
   // Resize canvas to fit container
   useEffect(() => {
@@ -129,12 +107,12 @@ export function MapCanvas({
     const originX = info.origin.position.x;
     const originY = info.origin.position.y;
 
-    // Center the view on the origin (0,0 in map coordinates)
-    const centerX = width / 2 + view.offsetX;
-    const centerY = height / 2 + view.offsetY;
+    // Center the view at top-left corner (origin at 0,0)
+    const centerX = view.offsetX;
+    const centerY = view.offsetY;
 
-    // Calculate cell size in pixels
-    const cellPixelSize = Math.max(1, Math.round(cellSize / resolution));
+    // Calculate cell size in pixels: pixels/meter * meters/cell = pixels/cell
+    const cellPixelSize = Math.max(1, cellSize * resolution);
 
     // Draw map using fillRect with bounds checking
     if (layers.map) {
@@ -145,9 +123,9 @@ export function MapCanvas({
 
           // Calculate screen position
           const worldX = originX + x * resolution;
-          const worldY = originY + (mapHeight - 1 - y) * resolution;
+          const worldY = originY + y * resolution;
           const screenX = centerX + worldX * cellSize;
-          const screenY = centerY - worldY * cellSize;
+          const screenY = centerY + worldY * cellSize;
 
           // Skip if outside canvas (with margin for cell size)
           const margin = cellPixelSize;
@@ -196,7 +174,7 @@ export function MapCanvas({
 
       // Horizontal lines
       for (let gy = Math.ceil(startGridY); gy <= endGridY; gy++) {
-        const screenY = centerY - gy * cellSize;
+        const screenY = centerY + gy * cellSize;
         ctx.beginPath();
         ctx.moveTo(0, screenY);
         ctx.lineTo(width, screenY);
@@ -207,7 +185,7 @@ export function MapCanvas({
     // Draw robot pose if available
     if (displayPose && layers.tf) {
       const robotScreenX = centerX + displayPose.x * cellSize;
-      const robotScreenY = centerY - displayPose.y * cellSize; // Flip Y
+      const robotScreenY = centerY - displayPose.y * cellSize;
 
       // Robot body (circle)
       ctx.fillStyle = '#22c55e';
@@ -234,29 +212,6 @@ export function MapCanvas({
       ctx.fillText('base_link', robotScreenX + 12, robotScreenY - 12);
     }
 
-    // Draw laser scan points
-    if (layers.laser && displayLaserPoints.length > 0 && displayPose) {
-      const robotScreenX = centerX + displayPose.x * cellSize;
-      const robotScreenY = centerY - displayPose.y * cellSize;
-
-      ctx.fillStyle = '#ef4444';
-      const pointSize = Math.max(1, cellSize / 20);
-
-      for (const point of displayLaserPoints) {
-        // Transform point from laser frame to map frame using robot pose
-        // Laser is at robot position, so we just add robot position
-        const mapX = displayPose.x + point.x;
-        const mapY = displayPose.y + point.y;
-
-        const screenX = centerX + mapX * cellSize;
-        const screenY = centerY - mapY * cellSize;
-
-        ctx.beginPath();
-        ctx.arc(screenX, screenY, pointSize, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
     // Draw global path (purple)
     if (layers.globalPlan && globalPath && globalPath.points.length > 0) {
       ctx.strokeStyle = '#a855f7';
@@ -265,7 +220,7 @@ export function MapCanvas({
       for (let i = 0; i < globalPath.points.length; i++) {
         const point = globalPath.points[i];
         const screenX = centerX + point.x * cellSize;
-        const screenY = centerY - point.y * cellSize;
+        const screenY = centerY + point.y * cellSize;
         if (i === 0) {
           ctx.moveTo(screenX, screenY);
         } else {
@@ -283,7 +238,7 @@ export function MapCanvas({
       for (let i = 0; i < localPath.points.length; i++) {
         const point = localPath.points[i];
         const screenX = centerX + point.x * cellSize;
-        const screenY = centerY - point.y * cellSize;
+        const screenY = centerY + point.y * cellSize;
         if (i === 0) {
           ctx.moveTo(screenX, screenY);
         } else {
@@ -307,7 +262,7 @@ export function MapCanvas({
       ctx.fillText('origin', originMarkerX + 8, originMarkerY - 8);
     }
 
-  }, [displayMapData, displayPose, displayLaserPoints, canvasSize, view, isConnected, layers, isScanReceived, globalPath, localPath]);
+  }, [displayMapData, displayPose, canvasSize, view, isConnected, layers, globalPath, localPath]);
 
   // Optimized: Only render when data changes, not on every frame
   const drawRef = useRef(draw);
@@ -317,7 +272,7 @@ export function MapCanvas({
   // Trigger render when any data changes - use individual layer values
   useEffect(() => {
     setRenderKey(k => k + 1);
-  }, [displayMapData, displayPose, displayLaserPoints, canvasSize, view, isConnected, layers.map, layers.tf, layers.laser, layers.globalPlan, layers.localPlan, globalPath, localPath]);
+  }, [displayMapData, displayPose, canvasSize, view, isConnected, layers.map, layers.tf, layers.globalPlan, layers.localPlan, globalPath, localPath]);
 
   // Single render triggered by data changes
   useEffect(() => {
@@ -350,12 +305,12 @@ export function MapCanvas({
       const cellSize = view.scale;
       const originX = info.origin.position.x;
       const originY = info.origin.position.y;
-      const centerX = width / 2 + view.offsetX;
-      const centerY = height / 2 + view.offsetY;
+      const centerX = view.offsetX;
+      const centerY = view.offsetY;
 
       // Convert screen coordinates to world coordinates
       const worldX = (clickX - centerX) / cellSize - originX;
-      const worldY = -(clickY - centerY) / cellSize - originY;
+      const worldY = (clickY - centerY) / cellSize - originY;
 
       // Publish goal
       publishGoal(worldX, worldY, 0);
@@ -425,12 +380,6 @@ export function MapCanvas({
           <div className="w-4 h-4 rounded-full bg-green-500"></div>
           <span>Robot</span>
         </div>
-        {isScanReceived && (
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-red-500"></div>
-            <span>Laser ({displayLaserPoints.length} pts)</span>
-          </div>
-        )}
       </div>
     </div>
   );

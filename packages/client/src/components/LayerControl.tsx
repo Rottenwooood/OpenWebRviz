@@ -2,7 +2,6 @@ import { useState, createContext, useContext, useCallback } from 'react';
 
 interface LayerState {
   map: boolean;
-  laser: boolean;
   tf: boolean;
   globalPlan: boolean;
   localPlan: boolean;
@@ -37,7 +36,6 @@ export function useLayers() {
 export function LayerControlProvider({ children }: { children: React.ReactNode }) {
   const [layers, setLayers] = useState<LayerState>({
     map: true,
-    laser: false,
     tf: true,
     globalPlan: false,
     localPlan: false,
@@ -45,7 +43,7 @@ export function LayerControlProvider({ children }: { children: React.ReactNode }
   });
 
   const [subscriptionSettings, setSubscriptionSettings] = useState<SubscriptionSettings>({
-    rate: 10, // Default 10 Hz
+    rate: 0, // Default unlimited
     paused: false,
   });
 
@@ -91,7 +89,6 @@ export function LayerControl() {
 
   const layersConfig = [
     { key: 'map' as const, label: 'Map', color: 'bg-blue-500' },
-    { key: 'laser' as const, label: 'Laser Scan', color: 'bg-red-500' },
     { key: 'tf' as const, label: 'Robot (TF)', color: 'bg-green-500' },
     { key: 'globalPlan' as const, label: 'Global Plan', color: 'bg-purple-500' },
     { key: 'localPlan' as const, label: 'Local Plan', color: 'bg-yellow-500' },
