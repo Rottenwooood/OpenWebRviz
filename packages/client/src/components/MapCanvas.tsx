@@ -204,16 +204,16 @@ export function MapCanvas({
     }
 
     // Draw map origin marker
-    const originX = centerX + info.origin.position.x * cellSize;
-    const originY = centerY - info.origin.position.y * cellSize;
+    const originMarkerX = centerX + info.origin.position.x * cellSize;
+    const originMarkerY = centerY - info.origin.position.y * cellSize;
 
     ctx.fillStyle = '#f59e0b';
     ctx.beginPath();
-    ctx.arc(originX, originY, 4, 0, Math.PI * 2);
+    ctx.arc(originMarkerX, originMarkerY, 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#f59e0b';
     ctx.font = '12px sans-serif';
-    ctx.fillText('origin', originX + 8, originY - 8);
+    ctx.fillText('origin', originMarkerX + 8, originMarkerY - 8);
 
   }, [mapData, actualPose, canvasSize, view, isConnected, laserPoints, layers]);
 
