@@ -89,17 +89,8 @@ export function MapCanvas({
     // Calculate cell size in pixels
     const cellPixelSize = Math.max(1, Math.round(cellSize / resolution));
 
-    // Draw map using ImageData for performance
+    // Draw map using fillRect with bounds checking
     if (layers.map) {
-      // Create ImageData for the canvas
-      const imageData = ctx.createImageData(width, height);
-      const pixels = imageData.data;
-
-      // Color definitions (RGBA)
-      const unknownColor = [176, 176, 176, 255];    // #b0b0b0 gray
-      const freeColor = [240, 240, 240, 255];       // #f0f0f0 white
-      const occupiedColor = [30, 30, 30, 255];      // #1e1e1e dark
-
       for (let y = 0; y < mapHeight; y++) {
         for (let x = 0; x < mapWidth; x++) {
           const idx = y * mapWidth + x;
@@ -108,41 +99,30 @@ export function MapCanvas({
           // Calculate screen position
           const worldX = originX + x * resolution;
           const worldY = originY + (mapHeight - 1 - y) * resolution;
-          const screenX = Math.round(centerX + worldX * cellSize);
-          const screenY = Math.round(centerY - worldY * cellSize);
+          const screenX = centerX + worldX * cellSize;
+          const screenY = centerY - worldY * cellSize;
 
-          // Skip if outside canvas
-          if (screenX < 0 || screenX >= width || screenY < 0 || screenY >= height) continue;
+          // Skip if outside canvas (with margin for cell size)
+          const margin = cellPixelSize;
+          if (screenX < -margin || screenX >= width + margin ||
+              screenY < -margin || screenY >= height + margin) {
+            continue;
+          }
 
           // Determine color
-          let color: number[];
+          let color: string;
           if (value === -1) {
-            color = unknownColor;
+            color = '#b0b0b0'; // unknown = gray
           } else if (value === 100) {
-            color = occupiedColor;
+            color = '#1e1e1e'; // occupied = dark
           } else {
-            color = freeColor;
+            color = '#f0f0f0'; // free = white
           }
 
-          // Fill the cell (may be larger than 1 pixel)
-          const size = Math.max(1, cellPixelSize);
-          for (let dy = 0; dy < size; dy++) {
-            for (let dx = 0; dx < size; dx++) {
-              const px = screenX + dx;
-              const py = screenY + dy;
-              if (px >= 0 && px < width && py >= 0 && py < height) {
-                const pixelIdx = (py * width + px) * 4;
-                pixels[pixelIdx] = color[0];
-                pixels[pixelIdx + 1] = color[1];
-                pixels[pixelIdx + 2] = color[2];
-                pixels[pixelIdx + 3] = color[3];
-              }
-            }
-          }
+          ctx.fillStyle = color;
+          ctx.fillRect(screenX, screenY, cellPixelSize, cellPixelSize);
         }
       }
-
-      ctx.putImageData(imageData, 0, 0);
     }
 
     // Draw grid lines (1 meter spacing)
