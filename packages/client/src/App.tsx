@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { MapCanvas } from './components/MapCanvas';
+import { ImageOverlay } from './components/ImageOverlay';
 import { LayerControl, LayerControlProvider, useLayers } from './components/LayerControl';
 import { DebugPanel } from './hooks/usePerformanceMonitor';
 import { useRosConnection } from './hooks/useRosConnection';
@@ -73,6 +74,7 @@ function AppContent() {
         <main className="flex-1 relative">
           {showDebug && <DebugPanel />}
           <MapCanvas ros={ros} isConnected={isConnected} />
+          <ImageOverlay ros={ros} />
         </main>
       </div>
 

@@ -6,6 +6,7 @@ interface LayerState {
   tf: boolean;
   globalPlan: boolean;
   localPlan: boolean;
+  image: boolean;
 }
 
 interface SubscriptionSettings {
@@ -40,6 +41,7 @@ export function LayerControlProvider({ children }: { children: React.ReactNode }
     tf: true,
     globalPlan: false,
     localPlan: false,
+    image: false,
   });
 
   const [subscriptionSettings, setSubscriptionSettings] = useState<SubscriptionSettings>({
@@ -93,6 +95,7 @@ export function LayerControl() {
     { key: 'tf' as const, label: 'Robot (TF)', color: 'bg-green-500' },
     { key: 'globalPlan' as const, label: 'Global Plan', color: 'bg-purple-500' },
     { key: 'localPlan' as const, label: 'Local Plan', color: 'bg-yellow-500' },
+    { key: 'image' as const, label: 'Camera Image', color: 'bg-pink-500' },
   ] as const;
 
   const rateOptions = [0, 1, 2, 5, 10, 20, 30];
