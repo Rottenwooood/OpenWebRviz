@@ -166,3 +166,69 @@ export function useGoalPublisher(
 
   return { publishGoal };
 }
+
+// Initial pose publisher hook
+export function useInitialPosePublisher(
+  ros: ROSLIB.Ros | null,
+  topic: string = '/initialpose'
+) {
+  const posePubRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!ros) return;
+
+    posePubRef.current = new ROSLIB.Topic({
+      ros,
+      name: topic,
+      messageType: 'geometry_msgs/msg/PoseWithCovarianceStamped',
+    });
+
+    return () => {
+      if (posePubRef.current) {
+        posePubRef.current.unadvertise();
+        posePubRef.current = null;
+      }
+    };
+  }, [ros, topic]);
+
+  const publishInitialPose = (x: number, y: number, theta: number = 0) => {
+    if (!posePubRef.current) return;
+
+    const quat = {
+      x: 0,
+      y: 0,
+      z: Math.sin(theta / 2),
+      w: Math.cos(theta / 2),
+    };
+
+    const now = new Date();
+    const pose = {
+      header: {
+        stamp: {
+          sec: Math.floor(now.getTime() / 1000),
+          nsec: (now.getTime() % 1000) * 1000000,
+        },
+        frame_id: 'map',
+      },
+      pose: {
+        pose: {
+          position: { x, y, z: 0 },
+          orientation: quat,
+        },
+        covariance: [
+          0.25, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0685389192,
+        ],
+      },
+    };
+
+    posePubRef.current.publish(pose);
+    console.log('[useInitialPosePublisher] Published initial pose:', x, y, theta);
+  };
+
+  return { publishInitialPose };
+}

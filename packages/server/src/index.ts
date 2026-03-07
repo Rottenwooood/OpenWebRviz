@@ -18,7 +18,7 @@ if (!fs.existsSync(MAPS_DIR)) {
 }
 
 app.use('/*', cors({
-  origin: 'http://localhost:3000',
+  origin: '*',
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -353,6 +353,154 @@ app.post('/api/slam/stop-tmux', async (c) => {
     return c.json({ status: 'stopped' });
   } catch (error) {
     return c.json({ error: 'Failed to stop tmux', details: String(error) }, 500);
+  }
+});
+
+// Navigation status
+app.get('/api/navigation/status', async (c) => {
+  try {
+    let navRunning = false;
+    try {
+      execSync('tmux has-session -t webbot_nav 2>/dev/null', { stdio: 'ignore' });
+      navRunning = true;
+    } catch {
+      navRunning = false;
+    }
+
+    // Check for nav2 processes
+    const { stdout } = await execAsync('pgrep -a nav2_bringup || true');
+    const running = stdout.trim().length > 0;
+
+    return c.json({ running: running || navRunning, tmux: navRunning });
+  } catch {
+    return c.json({ running: false, tmux: false });
+  }
+});
+
+// Start navigation with TMUX
+app.post('/api/navigation/start-tmux', async (c) => {
+  try {
+    const body = await c.req.json();
+    const mapName = body.mapName;
+
+    if (!mapName) {
+      return c.json({ error: 'mapName is required' }, 400);
+    }
+
+    const mapYamlPath = path.join(MAPS_DIR, `${mapName}.yaml`);
+    if (!fs.existsSync(mapYamlPath)) {
+      return c.json({ error: 'Map file not found' }, 404);
+    }
+
+    // Kill existing navigation first
+    try {
+      exec('tmux kill-session -t webbot_nav 2>/dev/null || true');
+    } catch {}
+
+    // Create navigation script that loads the map
+    const navScriptPath = path.join(process.cwd(), 'start_navigation.sh');
+
+    const navScript = `#!/bin/bash
+
+# Cleanup function to kill all child processes
+cleanup() {
+    echo "Stopping navigation..."
+    pkill -f nav2_bringup 2>/dev/null
+    pkill -f navigation_launch 2>/dev/null
+    pkill -f robot_state_publisher 2>/dev/null
+    pkill -f turtlebot3_gazebo 2>/dev/null
+    pkill -f "gz sim" 2>/dev/null
+    exit 0
+}
+
+trap cleanup SIGHUP SIGTERM EXIT
+
+source /opt/ros/jazzy/setup.bash
+export TURTLEBOT3_MODEL=burger
+
+MAP_YAML_PATH="${mapYamlPath}"
+echo "Starting navigation with map: ${mapYamlPath}"
+
+# Get robot description from turtlebot3 description (plain URDF, not xacro)
+TURTLEBOT3_URDF=$(ros2 pkg prefix turtlebot3_description)/share/turtlebot3_description/urdf/turtlebot3_burger.urdf
+export ROBOT_DESCRIPTION=$(cat $TURTLEBOT3_URDF)
+
+# Start Gazebo if not running
+if ! pgrep -f "gz sim" > /dev/null; then
+  echo "Starting Gazebo..."
+  ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py &
+  sleep 10
+fi
+
+# Start robot state publisher with robot description
+ros2 run robot_state_publisher robot_state_publisher --ros-args -p robot_description:="$ROBOT_DESCRIPTION" &
+
+sleep 2
+
+# Start navigation2 with map
+echo "Starting Navigation2 with map $MAP_YAML_PATH..."
+ros2 launch nav2_bringup bringup_launch.py use_sim_time:=true map:=$MAP_YAML_PATH &
+
+echo "Navigation started. Kill TMUX session to stop."
+wait
+`;
+
+    fs.writeFileSync(navScriptPath, navScript);
+    fs.chmodSync(navScriptPath, '755');
+
+    // Start in TMUX
+    const cmd = `tmux new -s webbot_nav -d "bash ${navScriptPath}"`;
+    exec(cmd);
+
+    return c.json({ status: 'started', session: 'webbot_nav', map: mapName });
+  } catch (error) {
+    return c.json({ error: 'Failed to start navigation', details: String(error) }, 500);
+  }
+});
+
+// Stop navigation
+app.post('/api/navigation/stop-tmux', async (c) => {
+  try {
+    // Kill TMUX session first (will trigger cleanup trap)
+    try {
+      exec('tmux kill-session -t webbot_nav 2>/dev/null || true');
+    } catch {}
+
+    // Kill nav2 processes
+    try { exec('pkill -f nav2_bringup'); } catch {}
+    try { exec('pkill -f navigation_launch'); } catch {}
+    try { exec('pkill -f robot_state_publisher'); } catch {}
+    try { exec('pkill -f turtlebot3_gazebo'); } catch {}
+    try { exec('pkill -f "gz sim"'); } catch {}
+
+    return c.json({ status: 'stopped' });
+  } catch (error) {
+    return c.json({ error: 'Failed to stop navigation', details: String(error) }, 500);
+  }
+});
+
+// Set initial pose for AMCL localization
+app.post('/api/navigation/set-initial-pose', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { x, y, theta } = body;
+
+    if (x === undefined || y === undefined || theta === undefined) {
+      return c.json({ error: 'x, y, and theta are required' }, 400);
+    }
+
+    // Publish initial pose using ros2 topic pub
+    const cmd = [
+      'ros2', 'topic', 'pub', '-1', '/initialpose',
+      'geometry_msgs/PoseWithCovarianceStamped',
+      `{header: {stamp: {sec: 0, nanosec: 0}, frame_id: 'map'}, pose: {pose: {position: {x: ${x}, y: ${y}, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: ${Math.sin(theta/2)}, w: ${Math.cos(theta/2)}}}, covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0685389192]}`
+    ].join(' ');
+
+    exec(cmd);
+
+    return c.json({ status: 'success', x, y, theta });
+  } catch (error) {
+    return c.json({ error: 'Failed to set initial pose', details: String(error) }, 500);
   }
 });
 

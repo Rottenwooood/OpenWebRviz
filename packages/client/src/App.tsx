@@ -149,13 +149,52 @@ function MappingPanel() {
   );
 }
 
-function NavigationPanel() {
+interface NavigationPanelProps {
+  navClickMode: 'none' | 'initial_pose' | 'goal';
+  setNavClickMode: (mode: 'none' | 'initial_pose' | 'goal') => void;
+}
+
+function NavigationPanel({ navClickMode, setNavClickMode }: NavigationPanelProps) {
   const { maps, fetchMaps, loading } = useMapManager();
   const [selectedMap, setSelectedMap] = useState<string | null>(null);
+  const [navStatus, setNavStatus] = useState<{ running: boolean; tmux: boolean }>({ running: false, tmux: false });
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     fetchMaps();
   }, [fetchMaps]);
+
+  // Poll navigation status
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('http://localhost:4000/api/navigation/status');
+        const data = await res.json();
+        setNavStatus(data);
+      } catch {}
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const startNavigation = async () => {
+    if (!selectedMap) return;
+    setStarting(true);
+    try {
+      await fetch('http://localhost:4000/api/navigation/start-tmux', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapName: selectedMap }),
+      });
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const stopNavigation = async () => {
+    await fetch('http://localhost:4000/api/navigation/stop-tmux', { method: 'POST' });
+  };
 
   if (loading) {
     return <div className="text-xs text-gray-500">Scanning for maps...</div>;
@@ -176,6 +215,7 @@ function NavigationPanel() {
         value={selectedMap || ''}
         onChange={(e) => setSelectedMap(e.target.value || null)}
         className="w-full px-2 py-1 text-xs border rounded"
+        disabled={navStatus.running}
       >
         <option value="">-- Select Map --</option>
         {maps.map((map) => (
@@ -184,9 +224,51 @@ function NavigationPanel() {
           </option>
         ))}
       </select>
-      {selectedMap && (
-        <div className="text-xs text-green-600">
-          Using map: {selectedMap}
+
+      {selectedMap && !navStatus.running && (
+        <button
+          onClick={startNavigation}
+          disabled={starting}
+          className="w-full bg-purple-600 text-white text-xs py-1 px-2 rounded hover:bg-purple-700 disabled:opacity-50"
+        >
+          {starting ? 'Starting...' : 'Start Navigation'}
+        </button>
+      )}
+
+      {navStatus.running && (
+        <div className="space-y-2">
+          <div className="text-xs text-green-600">Navigation Running</div>
+
+          <div className="text-xs text-gray-500">Click Mode</div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setNavClickMode(navClickMode === 'initial_pose' ? 'none' : 'initial_pose')}
+              className={`flex-1 text-xs py-1 px-2 rounded ${
+                navClickMode === 'initial_pose'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Set Initial Pose
+            </button>
+            <button
+              onClick={() => setNavClickMode(navClickMode === 'goal' ? 'none' : 'goal')}
+              className={`flex-1 text-xs py-1 px-2 rounded ${
+                navClickMode === 'goal'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Set Goal
+            </button>
+          </div>
+
+          <button
+            onClick={stopNavigation}
+            className="w-full bg-red-500 text-white text-xs py-1 px-2 rounded hover:bg-red-600"
+          >
+            Stop Navigation
+          </button>
         </div>
       )}
     </div>
@@ -215,6 +297,7 @@ function AppContent() {
   const { ros, isConnected } = useRosConnection('ws://localhost:9090');
   const { subscriptionSettings } = useLayers();
   const { mode, setMode } = useMode();
+  const [navClickMode, setNavClickMode] = useState<'none' | 'initial_pose' | 'goal'>('none');
 
   useKeyboardTeleop(ros, {
     linearSpeed: 0.5,
@@ -268,7 +351,7 @@ function AppContent() {
           {mode === 'teleop' ? (
             <MappingPanel />
           ) : (
-            <NavigationPanel />
+            <NavigationPanel navClickMode={navClickMode} setNavClickMode={setNavClickMode} />
           )}
           <LayerControl />
           <NetworkPanel />
@@ -276,7 +359,7 @@ function AppContent() {
 
         <main className="flex-1 relative">
           {showDebug && <DebugPanel />}
-          <MapCanvas ros={ros} isConnected={isConnected} />
+          <MapCanvas ros={ros} isConnected={isConnected} navClickMode={navClickMode} setNavClickMode={setNavClickMode} />
           <ImageOverlay ros={ros} />
         </main>
       </div>

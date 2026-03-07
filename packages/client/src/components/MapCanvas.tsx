@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as ROSLIB from 'roslib';
 import { useRosMap, MapData, RobotPose } from '../hooks/useRosMap';
 import { useRosTf, useRosTfTree } from '../hooks/useRosTf';
-import { useRosPath, useGoalPublisher } from '../hooks/useRosPath';
+import { useRosPath, useGoalPublisher, useInitialPosePublisher } from '../hooks/useRosPath';
 import { useLayers } from './LayerControl';
 import { useMode } from '../hooks/useMode';
 
@@ -10,6 +10,8 @@ interface MapCanvasProps {
   ros: ROSLIB.Ros | null;
   isConnected: boolean;
   mapTopic?: string;
+  navClickMode?: 'none' | 'initial_pose' | 'goal';
+  setNavClickMode?: (mode: 'none' | 'initial_pose' | 'goal') => void;
 }
 
 interface ViewState {
@@ -22,6 +24,8 @@ export function MapCanvas({
   ros,
   isConnected,
   mapTopic = '/map',
+  navClickMode = 'none',
+  setNavClickMode,
 }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,6 +46,7 @@ export function MapCanvas({
   const { robotPose: tfPose } = useRosTfTree(ros, tfPaused);
   const { globalPath, localPath } = useRosPath(ros, '/plan', '/local_plan', pathPaused);
   const { publishGoal } = useGoalPublisher(ros, '/goal_pose');
+  const { publishInitialPose } = useInitialPosePublisher(ros, '/initialpose');
 
   // Combine TF pose with map-derived pose
   const actualPose = tfPose || robotPose;
@@ -290,8 +295,8 @@ export function MapCanvas({
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // In navigation mode, click publishes goal
-    if (mode === 'navigation' && mapData && displayMapData) {
+    // In navigation mode, click publishes goal or initial pose based on navClickMode
+    if (mode === 'navigation' && mapData && displayMapData && navClickMode !== 'none') {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -312,8 +317,17 @@ export function MapCanvas({
       const worldX = (clickX - centerX) / cellSize - originX;
       const worldY = (clickY - centerY) / cellSize - originY;
 
-      // Publish goal
-      publishGoal(worldX, worldY, 0);
+      // Publish based on click mode
+      if (navClickMode === 'goal') {
+        publishGoal(worldX, worldY, 0);
+      } else if (navClickMode === 'initial_pose') {
+        publishInitialPose(worldX, worldY, 0);
+      }
+
+      // Reset click mode after publishing
+      if (setNavClickMode) {
+        setNavClickMode('none');
+      }
       return;
     }
 
@@ -350,7 +364,7 @@ export function MapCanvas({
         height={canvasSize.height}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
-        className="cursor-grab active:cursor-grabbing"
+        className={`cursor-grab active:cursor-grabbing ${navClickMode !== 'none' ? 'cursor-crosshair' : ''}`}
       />
 
       {/* Map info overlay */}
