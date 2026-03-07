@@ -8,3 +8,6 @@ packages/server/node_modules/
 bun.lock
 node_modules/
 refer/
+build/
+install/
+log/
