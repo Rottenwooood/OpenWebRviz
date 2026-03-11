@@ -245,7 +245,7 @@ export function MapCanvas({
       // Robot frame label
       ctx.fillStyle = '#22c55e';
       ctx.font = '12px sans-serif';
-      ctx.fillText('base_link', robotScreenX + 12, robotScreenY - 12);
+      ctx.fillText('body', robotScreenX + 12, robotScreenY - 12);
     }
 
     // Draw global path (purple)

@@ -66,7 +66,7 @@ export function useKeyboardTeleop(
       const msg = {
         header: {
           stamp: { sec: Math.floor(now / 1000), nanosec: (now % 1000) * 1000000 },
-          frame_id: 'base_link',
+          frame_id: 'body',
         },
         twist: {
           linear: { x: linear, y: 0, z: 0 },
