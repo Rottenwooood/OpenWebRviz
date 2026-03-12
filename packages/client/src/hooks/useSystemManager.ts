@@ -145,7 +145,25 @@ export function useSystemManager(ros: ROSLIB.Ros | null, isConnected: boolean) {
       const response = await callService<{ success: boolean; message: string }>('/system/save_map');
       setStatus(prev => ({ ...prev, loading: false }));
       if (response.success) {
-        return response.message; // 返回地图名称
+        // 从返回路径提取地图名称，例如 /home/nvidia/maps/map_123 -> map_123
+        const mapPath = response.message;
+        const mapName = mapPath.split('/').pop() || mapPath;
+
+        // 同步到服务器
+        try {
+          const syncRes = await fetch('http://localhost:4000/api/maps/sync-from-robot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: mapName }),
+          });
+          if (!syncRes.ok) {
+            console.error('Sync failed:', await syncRes.text());
+          }
+        } catch (syncErr) {
+          console.error('Sync error:', syncErr);
+        }
+
+        return mapName;
       } else {
         setStatus(prev => ({ ...prev, error: response.message }));
         return null;

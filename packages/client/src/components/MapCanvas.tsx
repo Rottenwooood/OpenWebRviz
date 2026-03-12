@@ -80,6 +80,7 @@ export function MapCanvas({
   // Display data - directly use source data
   const [displayMapData, setDisplayMapData] = useState<MapData | null>(null);
   const [displayPose, setDisplayPose] = useState<{ x: number; y: number; theta: number } | null>(null);
+  const [isStaticMap, setIsStaticMap] = useState(false);
 
   // Update display data when source data changes
   useEffect(() => {
@@ -88,8 +89,10 @@ export function MapCanvas({
       // Use static map in navigation mode, otherwise use ROS map
       if (staticMapData) {
         setDisplayMapData(staticMapData);
+        setIsStaticMap(true);
       } else if (mapData) {
         setDisplayMapData(mapData);
+        setIsStaticMap(false);
       }
       if (actualPose) setDisplayPose(actualPose);
     }
@@ -148,7 +151,7 @@ export function MapCanvas({
     const centerY = view.offsetY;
 
     // Calculate cell size in pixels: pixels/meter * meters/cell = pixels/cell
-    const cellPixelSize = Math.max(1, cellSize * resolution);
+    const cellPixelSize = Math.ceil(cellSize * resolution) + 1;
 
     // Draw map using fillRect with bounds checking
     if (layers.map) {
@@ -171,11 +174,16 @@ export function MapCanvas({
           }
 
           // Determine color using threshold
+          // Static map: <= 15 is free, >= 65 is occupied
+          // Dynamic map: <= 30 is free, >= 65 is occupied
+          const freeThreshold = isStaticMap ? 15 : 30;
           let color: string;
-           if (value >= 65) {
-            color = '#1e1e1e'; // occupied (value >= 65) = dark
-          } else if (value <= 10) {
-            color = '#f0f0f0'; // free (value <= 30) = white
+          if (value === -1) {
+            color = '#b0b0b0'; // unknown = gray
+          } else if (value >= 65) {
+            color = '#1e1e1e'; // occupied = dark
+          } else if (value <= freeThreshold) {
+            color = '#f0f0f0'; // free = white
           } else {
             color = '#b0b0b0'; // uncertain = gray
           }
@@ -183,38 +191,6 @@ export function MapCanvas({
           ctx.fillStyle = color;
           ctx.fillRect(screenX, screenY, cellPixelSize, cellPixelSize);
         }
-      }
-    }
-
-    // Draw grid lines (1 meter spacing)
-    if (cellSize >= 10 && layers.map) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = 1;
-      const gridSize = 1.0; // 1 meter
-      const gridPixelSize = gridSize * cellSize;
-
-      // Draw grid lines relative to origin
-      const startGridX = Math.floor(originX);
-      const endGridX = Math.floor(originX + mapWidth * resolution);
-      const startGridY = Math.floor(originY);
-      const endGridY = Math.floor(originY + mapHeight * resolution);
-
-      // Vertical lines
-      for (let gx = Math.ceil(startGridX); gx <= endGridX; gx++) {
-        const screenX = centerX + gx * cellSize;
-        ctx.beginPath();
-        ctx.moveTo(screenX, 0);
-        ctx.lineTo(screenX, height);
-        ctx.stroke();
-      }
-
-      // Horizontal lines
-      for (let gy = Math.ceil(startGridY); gy <= endGridY; gy++) {
-        const screenY = centerY + gy * cellSize;
-        ctx.beginPath();
-        ctx.moveTo(0, screenY);
-        ctx.lineTo(width, screenY);
-        ctx.stroke();
       }
     }
 
