@@ -199,7 +199,7 @@ export function MapCanvas({
     // Draw robot pose if available
     if (displayPose && layers.tf) {
       const robotScreenX = centerX - displayPose.x * cellSize;
-      const robotScreenY = centerY + displayPose.y * cellSize;
+      const robotScreenY = centerY - displayPose.y * cellSize;
 
       // Robot body (circle)
       ctx.fillStyle = '#22c55e';
@@ -233,8 +233,8 @@ export function MapCanvas({
       ctx.beginPath();
       for (let i = 0; i < globalPath.points.length; i++) {
         const point = globalPath.points[i];
-        const screenX = centerX + point.x * cellSize;
-        const screenY = centerY + point.y * cellSize;
+        const screenX = centerX - point.x * cellSize;
+        const screenY = centerY - point.y * cellSize;
         if (i === 0) {
           ctx.moveTo(screenX, screenY);
         } else {
@@ -252,7 +252,7 @@ export function MapCanvas({
       for (let i = 0; i < localPath.points.length; i++) {
         const point = localPath.points[i];
         const screenX = centerX - point.x * cellSize;
-        const screenY = centerY + point.y * cellSize;
+        const screenY = centerY - point.y * cellSize;
         if (i === 0) {
           ctx.moveTo(screenX, screenY);
         } else {
@@ -264,7 +264,7 @@ export function MapCanvas({
 
     // Draw map origin marker
     if (layers.map) {
-      const originMarkerX = centerX + info.origin.position.x * cellSize;
+      const originMarkerX = centerX - info.origin.position.x * cellSize;
       const originMarkerY = centerY - info.origin.position.y * cellSize;
 
       ctx.fillStyle = '#f59e0b';
@@ -323,8 +323,8 @@ export function MapCanvas({
       const centerY = view.offsetY;
 
       // Convert screen coordinates to world coordinates (flip Y for static map)
-      const worldX = (clickX - centerX) / cellSize - originX;
-      const worldY = isStaticMap ? (centerY - clickY) / cellSize - originY : (clickY - centerY) / cellSize - originY;
+      const worldX = (centerX - clickX) / cellSize + originX;
+      const worldY = (centerY - clickY) / cellSize + originY;
 
       // Publish based on click mode
       console.log('[MapCanvas] navClickMode:', navClickMode, 'worldX:', worldX, 'worldY:', worldY, 'isStaticMap:', isStaticMap);
