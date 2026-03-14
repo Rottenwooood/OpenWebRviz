@@ -33,6 +33,13 @@ export function MapCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>({ scale: 50, offsetX: 0, offsetY: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  const [navDrag, setNavDrag] = useState<{
+    startWorldX: number;
+    startWorldY: number;
+    currentWorldX: number;
+    currentWorldY: number;
+    mode: 'initial_pose' | 'goal';
+  } | null>(null);
 
   const { layers, subscriptionSettings } = useLayers();
   const isPaused = subscriptionSettings.paused;
@@ -118,6 +125,12 @@ export function MapCanvas({
     [view.offsetX, view.offsetY, view.scale]
   );
 
+  const computeTheta = useCallback(
+    (startX: number, startY: number, endX: number, endY: number) => {
+      return Math.atan2(endY - startY, endX - startX);
+    },
+    []
+  );
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -266,6 +279,53 @@ export function MapCanvas({
       ctx.font = '12px sans-serif';
       ctx.fillText('origin', originMarkerX + 8, originMarkerY - 8);
     }
+
+    if (navDrag) {
+      const start = worldToScreen(navDrag.startWorldX, navDrag.startWorldY);
+      const end = worldToScreen(navDrag.currentWorldX, navDrag.currentWorldY);
+
+      const color = navDrag.mode === 'initial_pose' ? '#3b82f6' : '#ef4444';
+
+      // 起点圆
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(start.x, start.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 主箭头线
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+
+      // 箭头头部
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+      const headLength = 12;
+
+      ctx.beginPath();
+      ctx.moveTo(end.x, end.y);
+      ctx.lineTo(
+        end.x - headLength * Math.cos(angle - Math.PI / 6),
+        end.y - headLength * Math.sin(angle - Math.PI / 6)
+      );
+      ctx.moveTo(end.x, end.y);
+      ctx.lineTo(
+        end.x - headLength * Math.cos(angle + Math.PI / 6),
+        end.y - headLength * Math.sin(angle + Math.PI / 6)
+      );
+      ctx.stroke();
+
+      // 标签
+      ctx.fillStyle = color;
+      ctx.font = '12px sans-serif';
+      ctx.fillText(
+        navDrag.mode === 'initial_pose' ? 'Initial Pose' : 'Goal',
+        start.x + 10,
+        start.y - 10
+      );
+    }
   }, [
     canvasSize,
     displayMapData,
@@ -279,6 +339,7 @@ export function MapCanvas({
     localPath,
     view.scale,
     worldToScreen,
+    navDrag,
   ]);
 
   const drawRef = useRef(draw);
@@ -300,6 +361,7 @@ export function MapCanvas({
     layers.localPlan,
     globalPath,
     localPath,
+    navDrag
   ]);
 
   useEffect(() => {
@@ -317,35 +379,66 @@ export function MapCanvas({
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (mode === 'navigation' && displayMapData && navClickMode !== 'none') {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+if (mode === 'navigation' && displayMapData && navClickMode !== 'none') {
+  const canvas = canvasRef.current;
+  if (!canvas) return;
 
-      const rect = canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
 
-      const { x: worldX, y: worldY } = screenToWorld(clickX, clickY);
+  const { x: startWorldX, y: startWorldY } = screenToWorld(clickX, clickY);
 
-      console.log(
-        '[MapCanvas] navClickMode:',
-        navClickMode,
-        'worldX:',
-        worldX,
-        'worldY:',
-        worldY
-      );
+  setNavDrag({
+    startWorldX,
+    startWorldY,
+    currentWorldX: startWorldX,
+    currentWorldY: startWorldY,
+    mode: navClickMode,
+  });
 
-      if (navClickMode === 'goal') {
-        publishGoal(worldX, worldY, 0);
-      } else if (navClickMode === 'initial_pose') {
-        publishInitialPose(worldX, worldY, 0);
-      }
+  const handleMouseMove = (moveEvent: MouseEvent) => {
+    const moveRect = canvas.getBoundingClientRect();
+    const moveX = moveEvent.clientX - moveRect.left;
+    const moveY = moveEvent.clientY - moveRect.top;
+    const { x: currentWorldX, y: currentWorldY } = screenToWorld(moveX, moveY);
 
-      setNavClickMode?.('none');
-      return;
+    setNavDrag(prev =>
+      prev
+        ? {
+            ...prev,
+            currentWorldX,
+            currentWorldY,
+          }
+        : prev
+    );
+  };
+
+  const handleMouseUp = (upEvent: MouseEvent) => {
+    const upRect = canvas.getBoundingClientRect();
+    const upX = upEvent.clientX - upRect.left;
+    const upY = upEvent.clientY - upRect.top;
+    const { x: endWorldX, y: endWorldY } = screenToWorld(upX, upY);
+
+    const theta = computeTheta(startWorldX, startWorldY, endWorldX, endWorldY);
+
+    if (navClickMode === 'goal') {
+      publishGoal(startWorldX, startWorldY, theta);
+    } else if (navClickMode === 'initial_pose') {
+      publishInitialPose(startWorldX, startWorldY, theta);
     }
 
+    setNavDrag(null);
+    setNavClickMode?.('none');
+
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
+  };
+
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseup', handleMouseUp);
+  return;
+}
     const startX = e.clientX;
     const startY = e.clientY;
     const startView = { ...view };
