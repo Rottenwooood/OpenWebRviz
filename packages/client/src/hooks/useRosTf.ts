@@ -36,7 +36,7 @@ export function useRosTfTree(ros: ROSLIB.Ros | null, paused: boolean = false) {
       if (!tfMsg.transforms) return;
 
       // Find robot frame - try multiple common names
-      const commonFrames = ['base_link', 'base_footprint', 'robot_base', 'base', 'body'];
+      const commonFrames = ['body'];
 
       for (const transform of tfMsg.transforms) {
         const parentFrameId = transform.header.frame_id;
