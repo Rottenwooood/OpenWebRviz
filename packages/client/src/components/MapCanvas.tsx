@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as ROSLIB from 'roslib';
 import { useRosMap, MapData } from '../hooks/useRosMap';
-import { useRosTfTree,useRosTf } from '../hooks/useRosTf';
+import { useRosTfTree } from '../hooks/useRosTf';
 import { useRosPath, useGoalPublisher, useInitialPosePublisher } from '../hooks/useRosPath';
 import { useLayers } from './LayerControl';
 import { useMode } from '../hooks/useMode';
@@ -51,25 +51,12 @@ export function MapCanvas({
 
   // 始终订阅 /map，不再使用本地静态地图文件
   const { mapData, robotPose } = useRosMap(ros, mapTopic, mapPaused);
-  const { robotPose: slamTfPose } = useRosTfTree(ros, tfPaused);
-    const navTfBaseLink = useRosTf(ros, 'map', 'base_link', tfPaused);
-  const navTfBaseFootprint = useRosTf(ros, 'body', 'base_link', tfPaused);
-  const navTfBody = useRosTf(ros, 'map', 'body', tfPaused);
-
-  console.log('[navTfBaseLink]', navTfBaseLink);
-  console.log('[navTfBaseFootprint]', navTfBaseFootprint);
-  console.log('[navTfBody]', navTfBody);
-
-
-  // 如果你的导航实际机器人主框架不是 base_link，而是 body，就改成 'body'
+  const { robotPose: tfPose } = useRosTfTree(ros, tfPaused);
   const { globalPath, localPath } = useRosPath(ros, '/plan', '/local_plan', pathPaused);
   const { publishGoal } = useGoalPublisher(ros, '/goal_pose');
   const { publishInitialPose } = useInitialPosePublisher(ros, '/initialpose');
 
-  const actualPose =
-    mode === 'navigation'
-      ? (navTfBaseLink || navTfBaseFootprint || navTfBody || robotPose)
-      : (slamTfPose || robotPose);
+  const actualPose = tfPose || robotPose;
 
   const [frozenNavMap, setFrozenNavMap] = useState<MapData | null>(null);
   const [displayMapData, setDisplayMapData] = useState<MapData | null>(null);
@@ -226,15 +213,13 @@ export function MapCanvas({
       ctx.beginPath();
 
       const arrowLength = 15;
-      const dirX = -Math.cos(displayPose.theta);
-      const dirY = Math.sin(displayPose.theta);
+      const arrowAngle = -displayPose.theta;
 
       ctx.moveTo(robotScreenX, robotScreenY);
       ctx.lineTo(
-        robotScreenX + dirX * arrowLength,
-        robotScreenY + dirY * arrowLength
+        robotScreenX + Math.cos(arrowAngle) * arrowLength,
+        robotScreenY + Math.sin(arrowAngle) * arrowLength
       );
-
       ctx.stroke();
 
       ctx.fillStyle = '#22c55e';
