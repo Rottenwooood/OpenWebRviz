@@ -12,27 +12,37 @@ from std_srvs.srv import Trigger
 from jetson_interfaces.srv import StartNav
 
 
-def get_server_url_from_discovery(default_url='http://192.168.1.100:4001'):
-    """Try to discover server URL via mDNS or config API"""
+def discover_server_url(default_url='http://192.168.1.34:4001'):
+    """Discover server URL by scanning local subnet"""
     import socket
 
-    # Try to get server IP from rosbridge server (assuming same machine)
-    # First try mDNS
+    # Get robot's own IP to determine subnet
+    robot_ip = None
     try:
-        socket.setdefaulttimeout(2)
-        # Try to resolve server via mDNS
-        socket.gethostbyname('webbot-viz.local')
-        return 'http://webbot-viz.local:4001'
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        robot_ip = s.getsockname()[0]
+        s.close()
     except:
         pass
 
-    # Try config API from known IPs
-    for ip in ['192.168.1.100', '192.168.1.101', '192.168.1.102']:
+    # Build IP list to try
+    if robot_ip:
+        parts = robot_ip.split('.')
+        subnet = f'{parts[0]}.{parts[1]}.{parts[2]}'
+        ips_to_try = [f'{subnet}.1'] + [f'{subnet}.{i}' for i in range(2, 21)]
+    else:
+        ips_to_try = ['192.168.1.1', '192.168.1.34', '192.168.1.100']
+
+    # Try /api/network endpoint on each IP
+    for ip in ips_to_try:
         try:
-            resp = requests.get(f'http://{ip}:4001/api/config', timeout=2)
+            resp = requests.get(f'http://{ip}:4001/api/network', timeout=1)
             if resp.status_code == 200:
                 data = resp.json()
-                return data.get('serverUrl', default_url)
+                if data.get('ips') and len(data['ips']) > 0:
+                    server_ip = data['ips'][0]
+                    return f'http://{server_ip}:4001'
         except:
             continue
 
@@ -52,7 +62,7 @@ class SystemManager(Node):
         self.declare_parameter('nav_package', 'jetson_node_pkg')
         self.declare_parameter('nav_launch_file', 'nav_all.launch.py')
         self.declare_parameter('nav2_params_file', '/home/nvidia/ros2_ws/my_nav2_params.yaml')
-        self.declare_parameter('server_url', 'http://192.168.1.100:4001')
+        self.declare_parameter('server_url', 'http://192.168.1.34:4001')
 
         self.maps_dir = self.get_parameter('maps_dir').value
         self.slam_package = self.get_parameter('slam_package').value
@@ -61,8 +71,14 @@ class SystemManager(Node):
         self.nav_launch_file = self.get_parameter('nav_launch_file').value
         self.nav2_params_file = self.get_parameter('nav2_params_file').value
 
-        # Try to get server URL from config API, fallback to parameter or default
-        self.server_url = get_server_url_from_discovery()
+        # Discover server URL dynamically, fallback to parameter
+        param_url = self.get_parameter('server_url').value
+        if param_url and param_url.startswith('http'):
+            self.server_url = discover_server_url(param_url)
+        else:
+            self.server_url = discover_server_url()
+
+        self.get_logger().info(f'Server URL: {self.server_url}')
 
         os.makedirs(self.maps_dir, exist_ok=True)
 
@@ -124,15 +140,22 @@ class SystemManager(Node):
             response.message = f'map file not found: {map_yaml_file}'
             return response
 
-        self.get_logger().info(f'Starting Navigation with map: {map_yaml_file}')
+        # 动态接收可选 nav2 参数文件
+        nav2_params_file = getattr(request, 'nav2_params_file', self.nav2_params_file)
+        if not os.path.exists(nav2_params_file):
+            response.success = False
+            response.message = f'Nav2 params file not found: {nav2_params_file}'
+            return response
+
+        self.get_logger().info(f'Starting Navigation with map: {map_yaml_file} and params: {nav2_params_file}')
 
         try:
             cmd = [
                 'ros2', 'launch',
                 self.nav_package,
                 self.nav_launch_file,
-                f'map_yaml_file:={map_yaml_file}',
-                f'nav2_params_file:={self.nav2_params_file}',
+                f'map:={map_yaml_file}',
+                f'params_file:={nav2_params_file}',
             ]
 
             self.current_process = subprocess.Popen(cmd)
