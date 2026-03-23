@@ -203,6 +203,8 @@ class SystemManager(Node):
 
         # Get stance from request (default to 'crouch')
         stance = getattr(request, 'stance', 'crouch') or 'crouch'
+        # Get speed from request (default to 'high')
+        speed = getattr(request, 'speed', 'high') or 'high'
 
         # 动态接收可选 nav2 参数文件
         nav2_params_file = getattr(request, 'nav2_params_file', self.nav2_params_file)
@@ -214,10 +216,10 @@ class SystemManager(Node):
         # Select launch file based on stance
         if stance == 'stand':
             nav_launch_file = self.stand_nav_launch_file
-            self.get_logger().info(f'Starting Stand Navigation with map: {map_yaml_file}')
+            self.get_logger().info(f'Starting Stand Navigation with map: {map_yaml_file}, speed: {speed}')
         else:
             nav_launch_file = self.nav_launch_file
-            self.get_logger().info(f'Starting Crouch Navigation with map: {map_yaml_file}')
+            self.get_logger().info(f'Starting Crouch Navigation with map: {map_yaml_file}, speed: {speed}')
 
         try:
             cmd = [
@@ -226,14 +228,15 @@ class SystemManager(Node):
                 nav_launch_file,
                 f'map:={map_yaml_file}',
                 f'params_file:={nav2_params_file}',
+                f'speed:={speed}',
             ]
 
             self.current_process = subprocess.Popen(cmd, start_new_session=True)
             self.process_name = 'navigation'
 
-            self.get_logger().info(f'Started Navigation with PID: {self.current_process.pid}, stance: {stance}')
+            self.get_logger().info(f'Started Navigation with PID: {self.current_process.pid}, stance: {stance}, speed: {speed}')
             response.success = True
-            response.message = f'Navigation started with map: {map_yaml_file} (stance: {stance})'
+            response.message = f'Navigation started with map: {map_yaml_file} (stance: {stance}, speed: {speed})'
         except Exception as e:
             self.get_logger().error(f'Failed to start Navigation: {e}')
             response.success = False
