@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ConnectionStatus } from './components/ConnectionStatus';
+import { MediaPanel } from './components/MediaPanel';
 import { MapCanvas } from './components/MapCanvas';
 import { ImageOverlay } from './components/ImageOverlay';
 import { LayerControl, LayerControlProvider, useLayers } from './components/LayerControl';
@@ -14,6 +15,12 @@ interface ServerConfig {
   serverUrl: string;
   jetsonHost: string;
   jetsonRosbridgePort: number;
+  media: {
+    janusBaseUrl: string;
+    janusDemoBaseUrl: string;
+    streamingUrl: string;
+    audioBridgeUrl: string;
+  };
 }
 
 function useServerConfig() {
@@ -454,6 +461,7 @@ function AppContent() {
               wsUrl={wsUrl}
             />
           )}
+          {config?.media && <MediaPanel media={config.media} />}
           <LayerControl />
           <NetworkPanel />
         </aside>

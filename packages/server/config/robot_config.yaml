@@ -21,6 +21,14 @@ frontend:
   ws_url: "ws://192.168.1.58:9090"
   api_url: "http://192.168.1.58:4001"
 
+# WebRTC / Janus 媒体配置
+media:
+  janus_host: "192.168.1.58"
+  janus_http_port: 8088
+  janus_demo_port: 8000
+  streaming_path: "/demos/streaming.html#"
+  audiobridge_path: "/demos/audiobridge.html"
+
 # 话题配置
 topics:
   scan: "/scan"

@@ -67,8 +67,20 @@ const JETSON_HOST = config?.jetson?.host || process.env.JETSON_HOST || '192.168.
 const JETSON_USER = config?.jetson?.user || process.env.JETSON_USER || 'nvidia';
 const JETSON_MAPS_DIR = config?.jetson?.maps_dir || '/home/nvidia/maps';
 const JETSON_ROSBRIDGE_PORT = config?.jetson?.rosbridge_port || 9090;
+const JANUS_HOST = config?.media?.janus_host || JETSON_HOST;
+const JANUS_HTTP_PORT = config?.media?.janus_http_port || 8088;
+const JANUS_DEMO_PORT = config?.media?.janus_demo_port || 8000;
+const JANUS_STREAMING_PATH = config?.media?.streaming_path || '/demos/streaming.html#';
+const JANUS_AUDIOBRIDGE_PATH = config?.media?.audiobridge_path || '/demos/audiobridge.html';
 
-console.log('[Config] Loaded config:', { SERVER_HOST, JETSON_HOST, JETSON_ROSBRIDGE_PORT });
+console.log('[Config] Loaded config:', {
+  SERVER_HOST,
+  JETSON_HOST,
+  JETSON_ROSBRIDGE_PORT,
+  JANUS_HOST,
+  JANUS_HTTP_PORT,
+  JANUS_DEMO_PORT,
+});
 
 // Ensure maps directory exists
 if (!fs.existsSync(MAPS_DIR)) {
@@ -91,6 +103,12 @@ app.get('/api/config', (c) => {
     serverUrl: `http://${SERVER_HOST}:${SERVER_PORT}`,
     jetsonHost: JETSON_HOST,
     jetsonRosbridgePort: JETSON_ROSBRIDGE_PORT,
+    media: {
+      janusBaseUrl: `http://${JANUS_HOST}:${JANUS_HTTP_PORT}`,
+      janusDemoBaseUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}`,
+      streamingUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}${JANUS_STREAMING_PATH}`,
+      audioBridgeUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}${JANUS_AUDIOBRIDGE_PATH}`,
+    },
   });
 });
 
