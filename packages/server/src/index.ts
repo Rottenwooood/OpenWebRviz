@@ -109,19 +109,22 @@ function randomTransaction() {
   return Math.random().toString(36).slice(2, 12);
 }
 
-function parseTruthyFlag(value: string | undefined) {
-  return value?.trim() === '1';
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 async function runRemoteCommand(command: string) {
-  return execFileAsync('ssh', [
+  const sshCommand = [
+    'ssh',
     '-o', 'BatchMode=yes',
     '-o', 'ConnectTimeout=5',
     `${JETSON_USER}@${JETSON_HOST}`,
     'bash',
     '-lc',
-    command,
-  ]);
+    shellQuote(command),
+  ].join(' ');
+
+  return execAsync(sshCommand);
 }
 
 async function getRemoteMediaStatus() {
@@ -321,7 +324,7 @@ app.get('/api/config', (c) => {
     jetsonRosbridgePort: JETSON_ROSBRIDGE_PORT,
     media: {
       janusBaseUrl: `http://${JANUS_HOST}:${JANUS_HTTP_PORT}`,
-      janusApiUrl: '/api/media/janus',
+      janusApiUrl: `http://${JANUS_HOST}:${JANUS_HTTP_PORT}${JANUS_API_PATH}`,
       janusDemoBaseUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}`,
       janusScriptUrl: `/api/media/assets/${JANUS_SCRIPT_ASSET}`,
       streamingUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}${JANUS_STREAMING_PATH}`,
@@ -483,11 +486,11 @@ app.post('/api/media/stop', async (c) => {
     }
 
     const script = `
-pkill -f "${JANUS_BINARY}" || true
-pkill -f "python3 -m http.server ${JANUS_DEMO_PORT}" || true
-pkill -f "gst-launch-1.0.*port=${MEDIA_AUDIO_CAPTURE_PORT}" || true
-pkill -f "gst-launch-1.0.*port=${MEDIA_AUDIO_PLAYBACK_PORT}" || true
-pkill -f "gst-launch-1.0.*port=${MEDIA_VIDEO_PORT}" || true
+pkill -f ${shellQuote(JANUS_BINARY)} || true
+pkill -f ${shellQuote(`python3 -m http.server ${JANUS_DEMO_PORT}`)} || true
+pkill -f ${shellQuote(`gst-launch-1.0.*port=${MEDIA_AUDIO_CAPTURE_PORT}`)} || true
+pkill -f ${shellQuote(`gst-launch-1.0.*port=${MEDIA_AUDIO_PLAYBACK_PORT}`)} || true
+pkill -f ${shellQuote(`gst-launch-1.0.*port=${MEDIA_VIDEO_PORT}`)} || true
 `;
 
     await runRemoteCommand(script);
