@@ -4,7 +4,6 @@ export interface MediaConfig {
   janusBaseUrl: string;
   janusApiUrl: string;
   janusDemoBaseUrl: string;
-  adapterScriptUrl: string;
   janusScriptUrl: string;
   streamingUrl: string;
   audioBridgeUrl: string;
@@ -47,6 +46,7 @@ declare global {
 
 const scriptCache = new Map<string, Promise<void>>();
 let janusInitPromise: Promise<void> | null = null;
+const ADAPTER_CDN_URL = 'https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/9.0.3/adapter.min.js';
 
 function loadScript(src: string) {
   if (scriptCache.has(src)) {
@@ -81,7 +81,7 @@ function loadScript(src: string) {
 }
 
 async function ensureJanusRuntime(config: MediaConfig) {
-  await loadScript(config.adapterScriptUrl);
+  await loadScript(ADAPTER_CDN_URL);
   await loadScript(config.janusScriptUrl);
 
   if (!window.Janus) {
@@ -93,7 +93,7 @@ async function ensureJanusRuntime(config: MediaConfig) {
       window.Janus.init({
         debug: false,
         dependencies: window.Janus.useDefaultDependencies
-          ? window.Janus.useDefaultDependencies()
+          ? window.Janus.useDefaultDependencies({ adapter: window.adapter })
           : undefined,
         callback: () => resolve(),
       });
@@ -379,8 +379,8 @@ export function useRobotMedia(config: MediaConfig | null) {
     }
 
     const required = kind === 'video'
-      ? ['janus', 'demoServer', 'videoPipeline'] as Array<keyof MediaServiceStatus>
-      : ['janus', 'demoServer', 'audioCapture'] as Array<keyof MediaServiceStatus>;
+      ? ['janus', 'videoPipeline'] as Array<keyof MediaServiceStatus>
+      : ['janus', 'audioCapture'] as Array<keyof MediaServiceStatus>;
 
     await ensureRobotService(required);
 
@@ -544,11 +544,10 @@ export function useRobotMedia(config: MediaConfig | null) {
     setError(null);
 
     try {
-      await ensureRobotService(['janus', 'demoServer', 'audioPlayback']);
+      await stopTalkback();
+      await ensureRobotService(['janus', 'audioPlayback']);
       await requestJson('/api/media/talkback/forward/start', { method: 'POST' });
       setTalkbackForwardActive(true);
-
-      await stopTalkback();
       await ensureJanusRuntime(config);
 
       const handle = await attachPlugin('janus.plugin.audiobridge', {

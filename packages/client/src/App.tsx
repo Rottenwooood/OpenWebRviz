@@ -21,7 +21,6 @@ interface ServerConfig {
     janusBaseUrl: string;
     janusApiUrl: string;
     janusDemoBaseUrl: string;
-    adapterScriptUrl: string;
     janusScriptUrl: string;
     streamingUrl: string;
     audioBridgeUrl: string;

@@ -78,6 +78,8 @@ const JANUS_BINARY = config?.media?.janus_binary || '/opt/janus/bin/janus';
 const JANUS_HTML_DIR = config?.media?.janus_html_dir || '/opt/janus/share/janus/html';
 const JANUS_ADAPTER_ASSET = config?.media?.adapter_asset || 'adapter.min.js';
 const JANUS_SCRIPT_ASSET = config?.media?.janus_script_asset || 'janus.js';
+const LOCAL_JANUS_GATEWAY_DIR = config?.media?.local_janus_gateway_dir || path.join(process.cwd(), '..', '..', 'janus-gateway');
+const LOCAL_JANUS_DEMOS_DIR = path.join(LOCAL_JANUS_GATEWAY_DIR, 'html', 'demos');
 const MEDIA_AUDIO_CAPTURE_DEVICE = config?.media?.audio_capture_device || 'plughw:CARD=UACDemoV10,DEV=0';
 const MEDIA_AUDIO_PLAYBACK_DEVICE = config?.media?.audio_playback_device || 'hw:0,0';
 const MEDIA_AUDIO_CAPTURE_PORT = config?.media?.audio_capture_port || 5005;
@@ -124,32 +126,40 @@ async function runRemoteCommand(command: string) {
 
 async function getRemoteMediaStatus() {
   const script = `
-printf 'janus=%s\n' "$(pgrep -f '${JANUS_BINARY}' >/dev/null && echo 1 || echo 0)"
-printf 'demo_server=%s\n' "$(pgrep -f 'python3 -m http.server ${JANUS_DEMO_PORT}' >/dev/null && echo 1 || echo 0)"
-printf 'video_pipeline=%s\n' "$(pgrep -f 'gst-launch-1.0.*port=${MEDIA_VIDEO_PORT}' >/dev/null && echo 1 || echo 0)"
-printf 'audio_capture=%s\n' "$(pgrep -f 'gst-launch-1.0.*port=${MEDIA_AUDIO_CAPTURE_PORT}' >/dev/null && echo 1 || echo 0)"
-printf 'audio_playback=%s\n' "$(pgrep -f 'gst-launch-1.0.*port=${MEDIA_AUDIO_PLAYBACK_PORT}' >/dev/null && echo 1 || echo 0)"
+python3 - <<'PY'
+import json
+import os
+import subprocess
+
+self_pid = os.getpid()
+parent_pid = os.getppid()
+
+def running(pattern: str) -> bool:
+    output = subprocess.check_output(["ps", "-eo", "pid,args"], text=True)
+    for line in output.splitlines()[1:]:
+        parts = line.strip().split(None, 1)
+        if len(parts) < 2:
+            continue
+        pid = int(parts[0])
+        args = parts[1]
+        if pid in (self_pid, parent_pid):
+            continue
+        if pattern in args:
+            return True
+    return False
+
+print(json.dumps({
+    "janus": running(${JSON.stringify(JANUS_BINARY)}),
+    "demoServer": running(${JSON.stringify(`python3 -m http.server ${JANUS_DEMO_PORT} --directory ${JANUS_HTML_DIR}`)}),
+    "videoPipeline": running(${JSON.stringify(`gst-launch-1.0 v4l2src device=${MEDIA_VIDEO_DEVICE}`)}),
+    "audioCapture": running(${JSON.stringify(`gst-launch-1.0 -v alsasrc device="${MEDIA_AUDIO_CAPTURE_DEVICE}"`)}),
+    "audioPlayback": running(${JSON.stringify(`gst-launch-1.0 -v udpsrc port=${MEDIA_AUDIO_PLAYBACK_PORT}`)}),
+}))
+PY
 `;
 
   const { stdout } = await runRemoteCommand(script);
-  const parsed = Object.fromEntries(
-    stdout
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const [key, rawValue] = line.split('=');
-        return [key, parseTruthyFlag(rawValue)];
-      }),
-  );
-
-  return {
-    janus: Boolean(parsed.janus),
-    demoServer: Boolean(parsed.demo_server),
-    videoPipeline: Boolean(parsed.video_pipeline),
-    audioCapture: Boolean(parsed.audio_capture),
-    audioPlayback: Boolean(parsed.audio_playback),
-  };
+  return JSON.parse(stdout.trim());
 }
 
 async function forwardJanusRequest<T = any>(plugin: string, body: Record<string, unknown>) {
@@ -160,11 +170,12 @@ async function forwardJanusRequest<T = any>(plugin: string, body: Record<string,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ janus: 'create', transaction: randomTransaction() }),
   });
-  const createJson = await createRes.json();
+  const createText = await createRes.text();
+  const createJson = createText ? JSON.parse(createText) : null;
   const sessionId = createJson?.data?.id;
 
   if (!sessionId) {
-    throw new Error(`Failed to create Janus session: ${JSON.stringify(createJson)}`);
+    throw new Error(`Failed to create Janus session: ${createText || `HTTP ${createRes.status}`}`);
   }
 
   let handleId: number | null = null;
@@ -179,11 +190,12 @@ async function forwardJanusRequest<T = any>(plugin: string, body: Record<string,
         transaction: randomTransaction(),
       }),
     });
-    const attachJson = await attachRes.json();
+    const attachText = await attachRes.text();
+    const attachJson = attachText ? JSON.parse(attachText) : null;
     handleId = attachJson?.data?.id ?? null;
 
     if (!handleId) {
-      throw new Error(`Failed to attach Janus plugin: ${JSON.stringify(attachJson)}`);
+      throw new Error(`Failed to attach Janus plugin: ${attachText || `HTTP ${attachRes.status}`}`);
     }
 
     const messageRes = await fetch(`${baseUrl}/${sessionId}/${handleId}`, {
@@ -195,7 +207,8 @@ async function forwardJanusRequest<T = any>(plugin: string, body: Record<string,
         transaction: randomTransaction(),
       }),
     });
-    const messageJson = await messageRes.json();
+    const messageText = await messageRes.text();
+    const messageJson = messageText ? JSON.parse(messageText) : null;
 
     if (messageJson?.janus === 'error') {
       throw new Error(messageJson?.error?.reason || JSON.stringify(messageJson));
@@ -309,7 +322,6 @@ app.get('/api/config', (c) => {
       janusBaseUrl: `http://${JANUS_HOST}:${JANUS_HTTP_PORT}`,
       janusApiUrl: '/api/media/janus',
       janusDemoBaseUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}`,
-      adapterScriptUrl: `/api/media/assets/${JANUS_ADAPTER_ASSET}`,
       janusScriptUrl: `/api/media/assets/${JANUS_SCRIPT_ASSET}`,
       streamingUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}${JANUS_STREAMING_PATH}`,
       audioBridgeUrl: `http://${JANUS_HOST}:${JANUS_DEMO_PORT}${JANUS_AUDIOBRIDGE_PATH}`,
@@ -323,7 +335,22 @@ app.get('/api/config', (c) => {
 
 app.get('/api/media/assets/*', async (c) => {
   const assetPath = c.req.path.replace('/api/media/assets/', '');
-  return proxyRemoteGet(`http://${JANUS_HOST}:${JANUS_DEMO_PORT}/${assetPath}`);
+  const safeAssetPath = path.basename(assetPath);
+
+  if (safeAssetPath === JANUS_SCRIPT_ASSET) {
+    const localScriptPath = path.join(LOCAL_JANUS_DEMOS_DIR, JANUS_SCRIPT_ASSET);
+    if (fs.existsSync(localScriptPath)) {
+      return new Response(fs.readFileSync(localScriptPath), {
+        headers: { 'Content-Type': 'application/javascript; charset=utf-8' },
+      });
+    }
+  }
+
+  if (safeAssetPath === JANUS_ADAPTER_ASSET) {
+    return c.text('adapter asset is now loaded from the frontend bundle', 404);
+  }
+
+  return proxyRemoteGet(`http://${JANUS_HOST}:${JANUS_DEMO_PORT}/${safeAssetPath}`);
 });
 
 app.all('/api/media/janus', proxyJanus);
@@ -348,28 +375,94 @@ app.get('/api/media/status', async (c) => {
 
 app.post('/api/media/start', async (c) => {
   try {
-    const script = `
-ensure_shell_process() {
-  local pattern="$1"
-  local logfile="$2"
-  local command="$3"
-  if ! pgrep -f "$pattern" >/dev/null; then
-    nohup bash -lc "$command" >"$logfile" 2>&1 &
-    sleep 1
-  fi
-}
+    const specs = [
+      {
+        name: 'janus',
+        pattern: JANUS_BINARY,
+        command: JANUS_BINARY,
+        log: '/tmp/webbot-janus.log',
+      },
+      {
+        name: 'demoServer',
+        pattern: `python3 -m http.server ${JANUS_DEMO_PORT} --directory ${JANUS_HTML_DIR}`,
+        command: `python3 -m http.server ${JANUS_DEMO_PORT} --directory ${JANUS_HTML_DIR}`,
+        log: '/tmp/webbot-janus-http.log',
+      },
+      {
+        name: 'audioCapture',
+        pattern: `gst-launch-1.0 -v alsasrc device="${MEDIA_AUDIO_CAPTURE_DEVICE}"`,
+        command: `gst-launch-1.0 -v alsasrc device="${MEDIA_AUDIO_CAPTURE_DEVICE}" ! audioconvert ! audioresample ! opusenc ! rtpopuspay ! udpsink host=127.0.0.1 port=${MEDIA_AUDIO_CAPTURE_PORT}`,
+        log: '/tmp/webbot-audio-capture.log',
+      },
+      {
+        name: 'audioPlayback',
+        pattern: `gst-launch-1.0 -v udpsrc port=${MEDIA_AUDIO_PLAYBACK_PORT}`,
+        command: `gst-launch-1.0 -v udpsrc port=${MEDIA_AUDIO_PLAYBACK_PORT} caps="application/x-rtp, media=(string)audio, clock-rate=(int)48000, encoding-name=(string)OPUS, payload=(int)111" ! queue ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! alsasink device=${MEDIA_AUDIO_PLAYBACK_DEVICE}`,
+        log: '/tmp/webbot-audio-playback.log',
+      },
+      {
+        name: 'videoPipeline',
+        pattern: `gst-launch-1.0 v4l2src device=${MEDIA_VIDEO_DEVICE}`,
+        command: `gst-launch-1.0 v4l2src device=${MEDIA_VIDEO_DEVICE} do-timestamp=true ! jpegdec ! nvvideoconvert ! 'video/x-raw,format=I420' ! x264enc bitrate=${MEDIA_VIDEO_BITRATE} tune=zerolatency speed-preset=ultrafast ! rtph264pay config-interval=1 pt=96 ! udpsink host=127.0.0.1 port=${MEDIA_VIDEO_PORT}`,
+        log: '/tmp/webbot-video.log',
+      },
+    ];
 
-ensure_shell_process "${JANUS_BINARY}" /tmp/webbot-janus.log "${JANUS_BINARY}"
-ensure_shell_process "python3 -m http.server ${JANUS_DEMO_PORT}" /tmp/webbot-janus-http.log "python3 -m http.server ${JANUS_DEMO_PORT} --directory ${JANUS_HTML_DIR}"
-ensure_shell_process "gst-launch-1.0.*port=${MEDIA_AUDIO_CAPTURE_PORT}" /tmp/webbot-audio-capture.log "gst-launch-1.0 -v alsasrc device=\\"${MEDIA_AUDIO_CAPTURE_DEVICE}\\" ! audioconvert ! audioresample ! opusenc ! rtpopuspay ! udpsink host=127.0.0.1 port=${MEDIA_AUDIO_CAPTURE_PORT}"
-ensure_shell_process "gst-launch-1.0.*port=${MEDIA_AUDIO_PLAYBACK_PORT}" /tmp/webbot-audio-playback.log "gst-launch-1.0 -v udpsrc port=${MEDIA_AUDIO_PLAYBACK_PORT} caps=\\"application/x-rtp, media=(string)audio, clock-rate=(int)48000, encoding-name=(string)OPUS, payload=(int)111\\" ! queue ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! alsasink device=${MEDIA_AUDIO_PLAYBACK_DEVICE}"
-ensure_shell_process "gst-launch-1.0.*port=${MEDIA_VIDEO_PORT}" /tmp/webbot-video.log "gst-launch-1.0 v4l2src device=${MEDIA_VIDEO_DEVICE} do-timestamp=true ! jpegdec ! nvvideoconvert ! 'video/x-raw,format=I420' ! x264enc bitrate=${MEDIA_VIDEO_BITRATE} tune=zerolatency speed-preset=ultrafast ! rtph264pay config-interval=1 pt=96 ! udpsink host=127.0.0.1 port=${MEDIA_VIDEO_PORT}"
+    const script = `
+python3 - <<'PY'
+import json
+import os
+import subprocess
+import time
+
+self_pid = os.getpid()
+parent_pid = os.getppid()
+specs = json.loads(r'''${JSON.stringify(specs)}''')
+
+def running(pattern: str) -> bool:
+    output = subprocess.check_output(["ps", "-eo", "pid,args"], text=True)
+    for line in output.splitlines()[1:]:
+        parts = line.strip().split(None, 1)
+        if len(parts) < 2:
+            continue
+        pid = int(parts[0])
+        args = parts[1]
+        if pid in (self_pid, parent_pid):
+            continue
+        if pattern in args:
+            return True
+    return False
+
+result = {}
+for spec in specs:
+    started = False
+    if not running(spec["pattern"]):
+        with open(spec["log"], "ab") as logfile:
+            subprocess.Popen(
+                spec["command"],
+                shell=True,
+                executable="/bin/bash",
+                stdout=logfile,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+        time.sleep(1)
+        started = True
+    result[spec["name"]] = {
+        "started": started,
+        "running": running(spec["pattern"]),
+    }
+
+print(json.dumps(result))
+PY
 `;
 
-    await runRemoteCommand(script);
+    const { stdout } = await runRemoteCommand(script);
     const service = await getRemoteMediaStatus();
 
-    return c.json({ status: 'started', service });
+    return c.json({ status: 'started', details: stdout.trim(), service });
   } catch (error) {
     return c.json({ error: 'Failed to start media services', details: String(error) }, 500);
   }
