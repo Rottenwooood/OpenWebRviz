@@ -68,6 +68,28 @@ const scriptCache = new Map<string, Promise<void>>();
 let janusInitPromise: Promise<void> | null = null;
 const ADAPTER_CDN_URL = 'https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/9.0.3/adapter.min.js';
 
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const raw = await response.text();
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
+  if (!raw.trim()) {
+    return {} as T;
+  }
+
+  if (!isJson) {
+    const snippet = raw.slice(0, 160).replace(/\s+/g, ' ').trim();
+    throw new Error(`Unexpected non-JSON response (${response.status}): ${snippet || 'empty response'}`);
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch (error) {
+    const snippet = raw.slice(0, 160).replace(/\s+/g, ' ').trim();
+    throw new Error(`Invalid JSON response (${response.status}): ${snippet || String(error)}`);
+  }
+}
+
 function isMissingJanusSession(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('458') || message.includes('No such session');
@@ -251,10 +273,13 @@ export function useRobotMedia(config: MediaConfig | null) {
 
   const requestJson = useCallback(async <T,>(url: string, init?: RequestInit) => {
     const response = await fetch(url, init);
-    const data = await response.json();
+    const data = await readJsonResponse<T>(response);
 
     if (!response.ok) {
-      throw new Error(data?.details || data?.error || `Request failed: ${response.status}`);
+      const payload = data as Record<string, unknown> | null;
+      throw new Error(
+        String(payload?.details || payload?.error || `Request failed: ${response.status}`),
+      );
     }
 
     return data as T;
@@ -485,6 +510,9 @@ export function useRobotMedia(config: MediaConfig | null) {
           activeHandle.createAnswer({
             jsep,
             tracks: [
+              kind === 'video'
+                ? { type: 'video', recv: true }
+                : { type: 'audio', recv: true },
               { type: 'data' },
             ],
             success: (answerJsep: unknown) => {

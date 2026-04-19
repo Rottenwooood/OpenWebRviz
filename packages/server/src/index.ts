@@ -106,6 +106,34 @@ function randomTransaction() {
   return Math.random().toString(36).slice(2, 12);
 }
 
+async function fetchWithTimeout(targetUrl: string, init?: RequestInit, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(targetUrl, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseJsonPayload<T>(payload: string, response: Response): T {
+  if (!payload.trim()) {
+    return {} as T;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const snippet = payload.slice(0, 200).replace(/\s+/g, ' ').trim();
+    throw new Error(`Unexpected upstream content-type ${contentType || 'unknown'}: ${snippet}`);
+  }
+
+  return JSON.parse(payload) as T;
+}
+
 async function forwardJanusRequest<T = any>(plugin: string, body: Record<string, unknown>) {
   const baseUrl = `http://${JANUS_HOST}:${JANUS_HTTP_PORT}${JANUS_API_PATH}`;
 
@@ -229,7 +257,7 @@ async function getTalkbackForwarders() {
 }
 
 async function proxyRemoteGet(targetUrl: string) {
-  const response = await fetch(targetUrl);
+  const response = await fetchWithTimeout(targetUrl);
   const headers = new Headers();
   const contentType = response.headers.get('content-type');
 
@@ -244,7 +272,7 @@ async function proxyRemoteGet(targetUrl: string) {
 }
 
 async function proxyRemoteJson(targetUrl: string) {
-  const response = await fetch(targetUrl);
+  const response = await fetchWithTimeout(targetUrl);
   const payload = await response.text();
   const headers = new Headers();
   headers.set('Content-Type', response.headers.get('content-type') || 'application/json; charset=utf-8');
@@ -256,10 +284,10 @@ async function proxyRemoteJson(targetUrl: string) {
 }
 
 async function requestRemoteJson<T = any>(targetUrl: string, init?: RequestInit) {
-  const response = await fetch(targetUrl, init);
+  const response = await fetchWithTimeout(targetUrl, init);
   const payload = await response.text();
   const contentType = response.headers.get('content-type') || 'application/json; charset=utf-8';
-  const data = payload ? JSON.parse(payload) as T : {} as T;
+  const data = parseJsonPayload<T>(payload, response);
 
   if (!response.ok) {
     const detail = typeof data === 'object' && data && 'details' in data
