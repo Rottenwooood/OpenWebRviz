@@ -488,43 +488,11 @@ function AppContent() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <aside className="w-64 bg-white border-r p-4 overflow-y-auto space-y-6">
+        <aside className="flex w-64 flex-col gap-6 overflow-y-auto border-r bg-white p-4">
           <RosbridgePanel
             isConnected={isConnected}
             reconnect={reconnect}
             disconnect={disconnect}
-          />
-          <MediaViewport
-            videoRef={media.videoRef}
-            audioRef={media.audioRef}
-            videoConnected={media.videoConnected}
-            audioMonitoring={media.audioConnected}
-            talkbackActive={media.talkbackActive}
-            loadingAction={media.loadingAction}
-            error={media.error}
-            faceSnapshot={face.snapshot}
-            onRefresh={() => void media.refreshStatus()}
-            onToggleVideo={() => {
-              if (media.videoConnected) {
-                void media.stopVideo();
-                return;
-              }
-              void media.startVideo();
-            }}
-            onToggleAudio={() => {
-              if (media.audioConnected) {
-                media.stopAudioMonitor();
-                return;
-              }
-              void media.startAudioMonitor();
-            }}
-            onToggleTalkback={() => {
-              if (media.talkbackActive) {
-                void media.stopTalkback();
-                return;
-              }
-              void media.startTalkback();
-            }}
           />
           {mode === 'teleop' ? (
             <MappingPanel ros={ros} isConnected={isConnected} />
@@ -540,6 +508,40 @@ function AppContent() {
           )}
           {/* Media controls moved to the bottom-left camera viewport. */}
           {/* NetworkPanel is hidden for the simplified operator UI. */}
+          <div className="mt-auto">
+            <MediaViewport
+              videoRef={media.videoRef}
+              audioRef={media.audioRef}
+              videoConnected={media.videoConnected}
+              audioMonitoring={media.audioConnected}
+              talkbackActive={media.talkbackActive}
+              loadingAction={media.loadingAction}
+              error={media.error}
+              faceSnapshot={face.snapshot}
+              onRefresh={() => void media.refreshStatus()}
+              onToggleVideo={() => {
+                if (media.videoConnected) {
+                  void media.stopVideo();
+                  return;
+                }
+                void media.startVideo();
+              }}
+              onToggleAudio={() => {
+                if (media.audioConnected) {
+                  media.stopAudioMonitor();
+                  return;
+                }
+                void media.startAudioMonitor();
+              }}
+              onToggleTalkback={() => {
+                if (media.talkbackActive) {
+                  void media.stopTalkback();
+                  return;
+                }
+                void media.startTalkback();
+              }}
+            />
+          </div>
         </aside>
 
         <main className="flex-1 relative">

@@ -83,27 +83,27 @@ export function MediaViewport({
 
   return (
     <div className="w-full">
-      <Card className="overflow-hidden border-slate-700/70 bg-slate-950/95 text-white shadow-lg shadow-black/20">
-        <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-white/10 px-3 py-2">
+      <Card className="overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm">
+        <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-slate-200 px-3 py-2">
           <div className="space-y-1">
-            <CardTitle className="text-sm text-white">Robot Camera</CardTitle>
+            <CardTitle className="text-sm text-slate-800">Robot Camera</CardTitle>
             <div className="flex items-center gap-2">
               <Badge variant={videoConnected ? 'success' : 'outline'}>
                 {videoConnected ? 'Live' : 'Standby'}
               </Badge>
               {audioMonitoring && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-slate-200">
+                <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                   <Volume2 className="h-3.5 w-3.5" />
                   Monitor
                 </span>
               )}
               {talkbackActive && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-slate-200">
+                <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                   <Mic className="h-3.5 w-3.5" />
                   Talkback
                 </span>
               )}
-              <span className="inline-flex items-center gap-1 text-[11px] text-slate-200">
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
                 <ScanFace className="h-3.5 w-3.5" />
                 {faceSnapshot.online ? `${faceSnapshot.faces.length} face(s)` : 'Face offline'}
               </span>
@@ -111,7 +111,7 @@ export function MediaViewport({
           </div>
         </CardHeader>
         <CardContent className="space-y-2 p-2">
-          <div className="relative overflow-hidden rounded-lg border border-white/10 bg-black">
+          <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-black">
             <video
               ref={videoRef}
               autoPlay
@@ -157,7 +157,7 @@ export function MediaViewport({
               aria-label="刷新媒体状态"
               onClick={onRefresh}
               disabled={busy}
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/10 text-slate-100 transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loadingAction === 'status' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </button>
@@ -169,8 +169,8 @@ export function MediaViewport({
               disabled={busy}
               className={`inline-flex h-10 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 videoConnected
-                  ? 'border-emerald-400/50 bg-emerald-400/20 text-emerald-200'
-                  : 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/20'
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
               }`}
             >
               {loadingAction === 'video' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -183,8 +183,8 @@ export function MediaViewport({
               disabled={busy}
               className={`inline-flex h-10 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 audioMonitoring
-                  ? 'border-sky-400/50 bg-sky-400/20 text-sky-200'
-                  : 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/20'
+                  ? 'border-sky-300 bg-sky-50 text-sky-700'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
               }`}
             >
               {loadingAction === 'audio' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className="h-4 w-4" />}
@@ -197,8 +197,8 @@ export function MediaViewport({
               disabled={busy}
               className={`inline-flex h-10 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 talkbackActive
-                  ? 'border-amber-400/50 bg-amber-400/20 text-amber-200'
-                  : 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/20'
+                  ? 'border-amber-300 bg-amber-50 text-amber-700'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
               }`}
             >
               {loadingAction === 'talkback' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
@@ -206,7 +206,7 @@ export function MediaViewport({
           </div>
 
           {error && (
-            <div className="rounded-md border border-red-400/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-100">
+            <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-600">
               {error}
             </div>
           )}
