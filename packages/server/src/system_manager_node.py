@@ -143,8 +143,18 @@ class SystemManager(Node):
 
         # Also kill any orphaned processes by name
         if process_name_to_kill == 'slam':
-            subprocess.run(['pkill', '-f', 'slam_toolbox'], capture_output=True)
-            subprocess.run(['pkill', '-f', 'online_async'], capture_output=True)
+            slam_patterns = [
+                'mapping_all.launch.py',
+                'slam_toolbox',
+                'online_async',
+                'fastlio_mapping',
+                'livox_ros_driver2_node',
+                'pointcloud_to_laserscan_node',
+                'pointcloud_to_laserscan',
+                'body_to_lidar',
+            ]
+            for pattern in slam_patterns:
+                subprocess.run(['pkill', '-f', pattern], capture_output=True)
         elif process_name_to_kill == 'navigation':
             subprocess.run(['pkill', '-f', 'nav2_bringup'], capture_output=True)
             subprocess.run(['pkill', '-f', 'navigation_launch'], capture_output=True)
@@ -238,7 +248,13 @@ class SystemManager(Node):
         map_path = os.path.join(self.maps_dir, map_name)
 
         try:
-            cmd = ['ros2', 'run', 'nav2_map_server', 'map_saver_cli', '-f', map_path]
+            cmd = [
+                'ros2', 'run', 'nav2_map_server', 'map_saver_cli',
+                '-f', map_path,
+                '--ros-args',
+                '-p', 'save_map_timeout:=10.0',
+                '-p', 'map_subscribe_transient_local:=true',
+            ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
             if result.returncode == 0:

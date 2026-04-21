@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -24,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument("--interval-ms", type=int, default=150)
     parser.add_argument("--frame-stale-ms", type=int, default=1500)
+    parser.add_argument("--stall-timeout-ms", type=int, default=10000)
     parser.add_argument("--similarity-threshold", type=float, default=0.35)
     parser.add_argument("--registry-path", default=str(Path.home() / "face" / "registry.json"))
     parser.add_argument("--face-db-dir", default=str(Path.home() / "face" / "face_db"))
@@ -42,6 +44,8 @@ class FaceRuntime:
         self.running = True
         self.last_error: str | None = None
         self.last_frame_at: str | None = None
+        self.last_heartbeat_at = time.monotonic()
+        self.processing_started_at: float | None = None
         self.face_features: dict[str, np.ndarray] = {}
         self.metadata: dict[str, dict[str, Any]] = {}
         self.snapshot: dict[str, Any] = {
@@ -155,22 +159,84 @@ class FaceRuntime:
 
     def get_snapshot(self) -> dict[str, Any]:
         with self.lock:
-            return dict(self.snapshot)
+            snapshot = dict(self.snapshot)
+
+        if self.snapshot_is_stale(snapshot.get("updatedAt")):
+            snapshot["online"] = False
+
+        return snapshot
 
     def get_health(self) -> dict[str, Any]:
         with self.lock:
-            return {
-                "online": bool(self.snapshot.get("online")),
-                "updatedAt": self.snapshot.get("updatedAt"),
-                "identitiesLoaded": len(self.face_features),
-                "lastError": self.last_error,
-                "device": self.args.device,
-            }
+            updated_at = self.snapshot.get("updatedAt")
+            online = bool(self.snapshot.get("online"))
+            last_error = self.last_error
+
+        if self.snapshot_is_stale(updated_at):
+            online = False
+            if not last_error:
+                last_error = "Face snapshot is stale"
+
+        return {
+            "online": online,
+            "updatedAt": updated_at,
+            "identitiesLoaded": len(self.face_features),
+            "lastError": last_error,
+            "device": self.args.device,
+        }
+
+    def snapshot_is_stale(self, updated_at: str | None) -> bool:
+        if not updated_at:
+            return False
+
+        parsed = datetime.fromisoformat(updated_at)
+        age_ms = (datetime.now(timezone.utc) - parsed).total_seconds() * 1000.0
+        return age_ms > max(self.args.frame_stale_ms * 2, self.args.stall_timeout_ms)
+
+    def touch_heartbeat(self) -> None:
+        with self.lock:
+            self.last_heartbeat_at = time.monotonic()
+
+    def begin_processing(self) -> None:
+        with self.lock:
+            self.processing_started_at = time.monotonic()
+
+    def finish_processing(self) -> None:
+        with self.lock:
+            self.processing_started_at = None
+            self.last_heartbeat_at = time.monotonic()
+
+    def watchdog_loop(self) -> None:
+        sleep_s = max(min(self.args.stall_timeout_ms / 4000.0, 2.0), 0.5)
+
+        while self.running:
+            time.sleep(sleep_s)
+
+            with self.lock:
+                heartbeat_age_ms = (time.monotonic() - self.last_heartbeat_at) * 1000.0
+                processing_age_ms = None if self.processing_started_at is None else (
+                    (time.monotonic() - self.processing_started_at) * 1000.0
+                )
+
+            if processing_age_ms is not None and processing_age_ms > self.args.stall_timeout_ms:
+                print(
+                    f"Face watchdog: inference stalled for {int(processing_age_ms)}ms, exiting for restart",
+                    flush=True,
+                )
+                os._exit(1)
+
+            if heartbeat_age_ms > self.args.stall_timeout_ms:
+                print(
+                    f"Face watchdog: worker heartbeat stale for {int(heartbeat_age_ms)}ms, exiting for restart",
+                    flush=True,
+                )
+                os._exit(1)
 
     def mark_error(self, message: str) -> None:
         with self.lock:
             self.snapshot["online"] = False
             self.last_error = message
+            self.last_heartbeat_at = time.monotonic()
 
     def load_frame_from_dir(self) -> np.ndarray | None:
         frame_dir = Path(self.args.frame_dir)
@@ -203,13 +269,21 @@ class FaceRuntime:
 
     def capture_from_frame_dir(self) -> None:
         while self.running:
+            self.touch_heartbeat()
             frame = self.load_frame_from_dir()
             if frame is None:
                 time.sleep(1)
                 continue
 
-            faces = self.app.get(frame)
-            self.update_snapshot(frame, faces)
+            self.begin_processing()
+            try:
+                faces = self.app.get(frame)
+                self.update_snapshot(frame, faces)
+            except Exception as exc:
+                self.mark_error(f"Face inference failed: {exc}")
+            finally:
+                self.finish_processing()
+
             time.sleep(max(self.args.interval_ms, 100) / 1000.0)
 
     def capture_loop(self) -> None:
@@ -218,6 +292,7 @@ class FaceRuntime:
             return
 
         while self.running:
+            self.touch_heartbeat()
             cap = cv2.VideoCapture(self.args.device, cv2.CAP_V4L2)
             cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.args.width)
@@ -230,13 +305,22 @@ class FaceRuntime:
 
             try:
                 while self.running:
+                    self.touch_heartbeat()
                     ok, frame = cap.read()
                     if not ok or frame is None:
                         self.mark_error("Failed to read frame from camera")
                         break
 
-                    faces = self.app.get(frame)
-                    self.update_snapshot(frame, faces)
+                    self.begin_processing()
+                    try:
+                        faces = self.app.get(frame)
+                        self.update_snapshot(frame, faces)
+                    except Exception as exc:
+                        self.mark_error(f"Face inference failed: {exc}")
+                        break
+                    finally:
+                        self.finish_processing()
+
                     time.sleep(max(self.args.interval_ms, 100) / 1000.0)
             finally:
                 cap.release()
@@ -278,6 +362,8 @@ def main() -> int:
 
     worker = threading.Thread(target=runtime.capture_loop, daemon=True)
     worker.start()
+    watchdog = threading.Thread(target=runtime.watchdog_loop, daemon=True)
+    watchdog.start()
 
     server = ThreadingHTTPServer((args.host, args.port), FaceRequestHandler)
     print(f"Face service listening on http://{args.host}:{args.port}")
