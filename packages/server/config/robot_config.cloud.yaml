@@ -90,6 +90,12 @@ topics:
   scan: "/scan"
   map: "/map"
   cmd_vel: "/cmd_vel"
+  motion_cmd: "/diablo/MotionCmd"
   tf: "/tf"
   global_plan: "/plan"
   local_plan: "/local_plan"
+
+teleop:
+  stand_mode: false
+  up: 0.0
+  publish_rate_hz: 25

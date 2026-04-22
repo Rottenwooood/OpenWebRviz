@@ -4,37 +4,54 @@ import * as ROSLIB from 'roslib';
 interface TeleopSettings {
   linearSpeed: number;
   angularSpeed: number;
-  cmdVelTopic: string;
+  motionCmdTopic: string;
+  standMode: boolean;
+  up: number;
   publishRateHz?: number;
 }
 
 export function useKeyboardTeleop(
   ros: ROSLIB.Ros | null,
-  settings: TeleopSettings = { linearSpeed: 0.5, angularSpeed: 1.0, cmdVelTopic: '/cmd_vel', publishRateHz: 15 },
+  settings: TeleopSettings = {
+    linearSpeed: 0.5,
+    angularSpeed: 1.0,
+    motionCmdTopic: '/diablo/MotionCmd',
+    standMode: false,
+    up: 0.0,
+    publishRateHz: 25,
+  },
   enabled: boolean = true
 ) {
-  const cmdVelPubRef = useRef<any>(null);
+  const motionCmdPubRef = useRef<any>(null);
   const pressedKeysRef = useRef<Set<string>>(new Set());
   const publishTimerRef = useRef<number | null>(null);
-  const lastPublishedRef = useRef<{ linear: number; angular: number } | null>(null);
 
   const sendCommand = useCallback((linear: number, angular: number) => {
-    if (!cmdVelPubRef.current || !enabled) return;
-
-    const lastPublished = lastPublishedRef.current;
-    if (lastPublished && lastPublished.linear === linear && lastPublished.angular === angular) {
-      return;
-    }
+    if (!motionCmdPubRef.current || !enabled) return;
 
     const msg = {
-      linear: { x: linear, y: 0, z: 0 },
-      angular: { x: 0, y: 0, z: angular },
+      mode_mark: false,
+      mode: {
+        stand_mode: settings.standMode,
+        pitch_ctrl_mode: false,
+        roll_ctrl_mode: false,
+        height_ctrl_mode: true,
+        jump_mode: false,
+        split_mode: false,
+      },
+      value: {
+        forward: linear,
+        left: angular,
+        up: settings.up,
+        roll: 0.0,
+        pitch: 0.0,
+        leg_split: 0.0,
+      },
     };
 
-    cmdVelPubRef.current.publish(msg);
-    lastPublishedRef.current = { linear, angular };
-    console.log('[useKeyboardTeleop] Published /cmd_vel:', { linear, angular });
-  }, [enabled]);
+    motionCmdPubRef.current.publish(msg);
+    console.log('[useKeyboardTeleop] Published /diablo/MotionCmd:', { linear, angular });
+  }, [enabled, settings.standMode, settings.up]);
 
   const sendStop = useCallback(() => {
     sendCommand(0, 0);
@@ -44,28 +61,27 @@ export function useKeyboardTeleop(
   useEffect(() => {
     if (!ros || !enabled) return;
 
-    cmdVelPubRef.current = new ROSLIB.Topic({
+    motionCmdPubRef.current = new ROSLIB.Topic({
       ros,
-      name: settings.cmdVelTopic,
-      messageType: 'geometry_msgs/msg/Twist',
+      name: settings.motionCmdTopic,
+      messageType: 'motion_msgs/msg/MotionCtrl',
       queue_size: 1,
     });
 
-    console.log('[useKeyboardTeleop] Publisher initialized for', settings.cmdVelTopic);
+    console.log('[useKeyboardTeleop] Publisher initialized for', settings.motionCmdTopic);
 
     return () => {
       sendStop();
-      if (cmdVelPubRef.current) {
-        cmdVelPubRef.current.unadvertise();
-        cmdVelPubRef.current = null;
+      if (motionCmdPubRef.current) {
+        motionCmdPubRef.current.unadvertise();
+        motionCmdPubRef.current = null;
       }
-      lastPublishedRef.current = null;
     };
-  }, [ros, settings.cmdVelTopic, enabled, sendStop]);
+  }, [ros, settings.motionCmdTopic, enabled, sendStop]);
 
-  // Publish velocity command
+  // Publish Diablo motion command directly in the same direction mapping the Jetson bridge used.
   const publishCmdVel = useCallback(() => {
-    if (!cmdVelPubRef.current || !enabled) return;
+    if (!motionCmdPubRef.current || !enabled) return;
 
     const pressed = pressedKeysRef.current;
     let linear = 0;

@@ -331,6 +331,12 @@ app.get('/api/config', (c) => {
     },
     topics: {
       cmdVelTopic: config?.topics?.cmd_vel || '/cmd_vel',
+      motionCmdTopic: config?.topics?.motion_cmd || '/diablo/MotionCmd',
+    },
+    teleop: {
+      standMode: Boolean(config?.teleop?.stand_mode ?? false),
+      up: Number(config?.teleop?.up ?? 0.0),
+      publishRateHz: Number(config?.teleop?.publish_rate_hz ?? 25),
     },
   });
 });

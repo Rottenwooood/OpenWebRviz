@@ -39,6 +39,12 @@ interface ServerConfig {
   };
   topics?: {
     cmdVelTopic?: string;
+    motionCmdTopic?: string;
+  };
+  teleop?: {
+    standMode?: boolean;
+    up?: number;
+    publishRateHz?: number;
   };
 }
 
@@ -433,8 +439,10 @@ function AppContent() {
   useKeyboardTeleop(ros, {
     linearSpeed: 0.5,
     angularSpeed: 1.0,
-    cmdVelTopic: config?.topics?.cmdVelTopic || '/cmd_vel',
-    publishRateHz: 15,
+    motionCmdTopic: config?.topics?.motionCmdTopic || '/diablo/MotionCmd',
+    standMode: config?.teleop?.standMode ?? false,
+    up: config?.teleop?.up ?? 0.0,
+    publishRateHz: config?.teleop?.publishRateHz ?? 25,
   }, isConnected && mode === 'teleop');
 
   // Handle save map - save on robot (Jetson will upload to server automatically)

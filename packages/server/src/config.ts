@@ -29,6 +29,16 @@ export function parseYamlConfig(filePath: string) {
     if (match && currentSection) {
       const key = match[1];
       const raw = match[2].trim().replace(/^["']|["']$/g, '');
+      const lower = raw.toLowerCase();
+      if (lower === 'true') {
+        config[currentSection][key] = true;
+        continue;
+      }
+      if (lower === 'false') {
+        config[currentSection][key] = false;
+        continue;
+      }
+
       const num = Number(raw);
       config[currentSection][key] = Number.isNaN(num) || raw.includes('.') ? raw : num;
     }
