@@ -43,6 +43,7 @@ export function MapCanvas({
 }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [view, setView] = useState<ViewState>({ scale: 50, offsetX: 0, offsetY: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [navDrag, setNavDrag] = useState<{
@@ -102,6 +103,47 @@ export function MapCanvas({
       }
     }
   }, [mode, mapData, frozenNavMap, actualPose, subscriptionSettings.paused]);
+
+  useEffect(() => {
+    if (!displayMapData) {
+      mapCanvasRef.current = null;
+      return;
+    }
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = displayMapData.info.width;
+    offscreen.height = displayMapData.info.height;
+
+    const offscreenCtx = offscreen.getContext('2d');
+    if (!offscreenCtx) {
+      mapCanvasRef.current = null;
+      return;
+    }
+
+    const image = offscreenCtx.createImageData(offscreen.width, offscreen.height);
+    const pixels = image.data;
+    const { data } = displayMapData;
+
+    for (let i = 0; i < data.length; i++) {
+      const value = data[i];
+      const offset = i * 4;
+
+      let channel = 176;
+      if (value >= 65) {
+        channel = 30;
+      } else if (value <= 30 && value !== -1) {
+        channel = 240;
+      }
+
+      pixels[offset] = channel;
+      pixels[offset + 1] = channel;
+      pixels[offset + 2] = channel;
+      pixels[offset + 3] = 255;
+    }
+
+    offscreenCtx.putImageData(image, 0, 0);
+    mapCanvasRef.current = offscreen;
+  }, [displayMapData]);
 
   useEffect(() => {
     const updateSize = () => {
@@ -180,48 +222,23 @@ export function MapCanvas({
       return;
     }
 
-    const { info, data } = displayMapData;
+    const { info } = displayMapData;
     const resolution = info.resolution;
     const mapWidth = info.width;
     const mapHeight = info.height;
     const originX = info.origin.position.x;
     const originY = info.origin.position.y;
-    const cellPixelSize = Math.ceil(view.scale * resolution) + 1;
 
     if (layers.map) {
-      for (let y = 0; y < mapHeight; y++) {
-        for (let x = 0; x < mapWidth; x++) {
-          const idx = y * mapWidth + x;
-          const value = data[idx];
+      const cachedMap = mapCanvasRef.current;
+      if (cachedMap) {
+        const drawX = view.offsetX - originX * view.scale;
+        const drawY = view.offsetY + originY * view.scale;
+        const drawWidth = mapWidth * resolution * view.scale;
+        const drawHeight = mapHeight * resolution * view.scale;
 
-          const worldX = originX + x * resolution;
-          const worldY = originY + y * resolution;
-          const { x: screenX, y: screenY } = worldToScreen(worldX, worldY);
-
-          const margin = cellPixelSize;
-          if (
-            screenX < -margin ||
-            screenX >= width + margin ||
-            screenY < -margin ||
-            screenY >= height + margin
-          ) {
-            continue;
-          }
-
-          let color: string;
-          if (value === -1) {
-            color = '#b0b0b0';
-          } else if (value >= 65) {
-            color = '#1e1e1e';
-          } else if (value <= 30) {
-            color = '#f0f0f0';
-          } else {
-            color = '#b0b0b0';
-          }
-
-          ctx.fillStyle = color;
-          ctx.fillRect(screenX, screenY, cellPixelSize, cellPixelSize);
-        }
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(cachedMap, drawX, drawY, drawWidth, drawHeight);
       }
     }
 
