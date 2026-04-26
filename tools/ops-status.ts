@@ -146,6 +146,7 @@ printf 'control=%s\n' "$(systemctl --user is-active webbot-media-control.service
 printf 'face=%s\n' "$(systemctl --user is-active webbot-face.service 2>/dev/null || true)"
 printf 'tunnel_ros=%s\n' "$(systemctl --user is-active webbot-reverse-tunnel.service 2>/dev/null || true)"
 printf 'tunnel_media=%s\n' "$(systemctl --user is-active webbot-media-tunnel.service 2>/dev/null || true)"
+printf 'linger=%s\n' "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null || true)"
 printf 'janus_proc=%s\n' "$(pgrep -f '/opt/janus/bin/janus' >/dev/null && echo yes || echo no)"
 printf 'demo_proc=%s\n' "$(pgrep -f 'python3 -m http.server 8000' >/dev/null && echo yes || echo no)"
 printf 'audio_capture_proc=%s\n' "$(pgrep -f 'gst-launch-1.0 -v alsasrc' >/dev/null && echo yes || echo no)"
@@ -202,6 +203,7 @@ function render(cloud: Awaited<ReturnType<typeof probeCloud>>, jetson: Awaited<R
     '',
     section('Jetson', [
       `systemd: media=${statusChip(jetson.metrics.media || '')} video=${statusChip(jetson.metrics.video || '')} control=${statusChip(jetson.metrics.control || '')} face=${statusChip(jetson.metrics.face || '')} tunnel-ros=${statusChip(jetson.metrics.tunnel_ros || '')} tunnel-media=${statusChip(jetson.metrics.tunnel_media || '')}`,
+      `boot: linger=${jetson.metrics.linger === 'yes' ? color('yes', 32) : color(jetson.metrics.linger || 'no', 31)}`,
       `procs: janus=${ok(jetson.metrics.janus_proc === 'yes')} demo=${ok(jetson.metrics.demo_proc === 'yes')} audio-capture=${ok(jetson.metrics.audio_capture_proc === 'yes')} audio-playback=${ok(jetson.metrics.audio_playback_proc === 'yes')} video=${idleAware(jetson.metrics.video === 'active')}`,
       `ports: 9090=${ok(jetson.metrics.port_9090 === 'yes')} 8088=${ok(jetson.metrics.port_8088 === 'yes')} 8000=${ok(jetson.metrics.port_8000 === 'yes')} 19100=${ok(jetson.metrics.port_19100 === 'yes')} 19110=${ok(jetson.metrics.port_19110 === 'yes')} 5005=${ok(jetson.metrics.port_5005 === 'yes')} 5006=${ok(jetson.metrics.port_5006 === 'yes')}`,
       `devices: mic=${ok(jetson.metrics.audio_capture_dev === 'yes')} spk=${ok(jetson.metrics.audio_playback_dev === 'yes')} video0=${ok(jetson.metrics.video0_exists === 'yes')} frames=${jetson.metrics.frame_count ?? '0'}`,
